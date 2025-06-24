@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 
-const useFpsOptimization = (render: () => void, max = 10): number => {
+const useFpsOptimization = (render: () => void, max = 24): number => {
   const [hz, setHz] = useState(1);
   useEffect(() => {
     const loop = window.setInterval(() => {
       const start = performance.now();
       render();
-      const newHz = Math.min(
+      const newHz = Math.max(
         Math.floor((performance.now() - start) / 1000),
         max
       );

@@ -1,15 +1,21 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { styled } from "styled-components";
 import { Button, Slider } from "@mui/material";
 import { useF32ArrayPointer } from "@/wasm/memory";
 import { useStore } from "@/module/useStore";
 import useFpsOptimization from "@/module/useFpsOptimization";
 import { CanvasId } from "@/store/ctx";
-import { useCtx, useWasmModule } from "@/store/ctx/hooks";
-import { calcUndistMap, calibration, transform } from "@/util/calibrateCamera";
-import CanvasComponent from "./Canvas";
+import { useCtx, useGlCtx, useWasmModule } from "@/store/ctx/hooks";
+import { calcUndistMap, calibration } from "@/util/calibrateCamera";
+import { GlCanvasComponent } from "./Canvas";
 import { useResolution } from "./ResolutionSelector";
 import CanavsIdSelector from "./CanvasIdSelector";
+import {
+  MapXY,
+  createRenderTexture,
+  makeObjTexture,
+  mapxAndMapyToMapxy,
+} from "@/module/uvRendering";
 
 export type Props = {
   id: CanvasId;
@@ -30,9 +36,9 @@ const keys = {
   originalId: "originalId",
   intrMat: "intrMat",
   distCoeffs: "distCoeffs",
-  mapX: "mapX",
-  mapY: "mapY",
 } as const;
+
+const REMAP_TEXTURE_SAMPLING_RATE = 100;
 
 const CalibratedCamera: React.FC<Props> = (props) => {
   const module = useWasmModule();
@@ -58,7 +64,7 @@ const CalibratedCamera: React.FC<Props> = (props) => {
     },
     [setDuration]
   );
-  const ctx = useCtx(props.id);
+  const gl = useGlCtx(props.id);
   const [originalId] = useStore<number>(keys.originalId, props.id);
   const [intrMat, setIntrMat] = useStore<number[]>(
     keys.intrMat,
@@ -68,8 +74,16 @@ const CalibratedCamera: React.FC<Props> = (props) => {
     keys.distCoeffs,
     originalId || 0
   );
-  const [mapX, setMapX] = useState<number[]>([]);
-  const [mapY, setMapY] = useState<number[]>([]);
+  const [mapXY, setMapXY] = useState<MapXY>([]);
+  const draw = useMemo(() => {
+    return gl !== null && mapXY.length !== 0
+      ? createRenderTexture(
+          gl,
+          makeObjTexture(mapXY, resolution.w, REMAP_TEXTURE_SAMPLING_RATE),
+          resolution.w / resolution.h
+        )
+      : null;
+  }, [gl, mapXY, resolution]);
 
   const orgCtx = useCtx(originalId as CanvasId);
   const startCalib = useCallback(async () => {
@@ -97,8 +111,6 @@ const CalibratedCamera: React.FC<Props> = (props) => {
 
   const intrMatPointer = useF32ArrayPointer(intrMat, 3 * 3);
   const distCoeffsPointer = useF32ArrayPointer(distCoeffs, 8);
-  const mapXPointer = useF32ArrayPointer(mapX, resolution.w * resolution.h);
-  const mapYPointer = useF32ArrayPointer(mapY, resolution.w * resolution.h);
 
   useEffect(() => {
     if (module === null || intrMatPointer === 0 || distCoeffsPointer === 0)
@@ -109,33 +121,15 @@ const CalibratedCamera: React.FC<Props> = (props) => {
       intrMatPointer,
       distCoeffsPointer
     );
-    setMapX(Array.from(mapX.data));
-    setMapY(Array.from(mapY.data));
+    setMapXY(mapxAndMapyToMapxy(Array.from(mapX.data), Array.from(mapY.data)));
     mapX.clear();
     mapY.clear();
   }, [module, resolution, intrMatPointer, distCoeffsPointer]);
 
   const renderCalibratedCamera = useCallback(() => {
-    if (
-      module === null ||
-      ctx === null ||
-      orgCtx === null ||
-      mapXPointer === 0 ||
-      mapYPointer === 0
-    )
-      return;
-    const dest = transform(
-      module,
-      orgCtx,
-      resolution,
-      mapXPointer,
-      mapYPointer
-    );
-    const imgData = ctx.createImageData(resolution.w, resolution.h);
-    imgData.data.set(dest.data);
-    ctx.putImageData(imgData, 0, 0);
-    dest.clear();
-  }, [module, ctx, orgCtx, resolution, mapXPointer, mapYPointer]);
+    if (draw === null || orgCtx === null) return;
+    draw(orgCtx.canvas);
+  }, [draw, orgCtx, resolution]);
 
   useFpsOptimization(renderCalibratedCamera);
 
@@ -185,7 +179,7 @@ const CalibratedCamera: React.FC<Props> = (props) => {
           </Button>
         </PanelFooter>
       </PanelContainer>
-      <CanvasComponent id={props.id} />
+      <GlCanvasComponent id={props.id} />
     </div>
   );
 };

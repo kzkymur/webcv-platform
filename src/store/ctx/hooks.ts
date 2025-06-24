@@ -36,6 +36,16 @@ export const useCtx = (id: CanvasId): CanvasRenderingContext2D | null => {
   }, [ctxs, id]);
   return ctx;
 };
+export const useGlCtx = (id: CanvasId): WebGLRenderingContext | null => {
+  const gls = useSelector((s: RootState) => s.ctx.gls);
+  const gl = useMemo(() => {
+    const getGls = gls[id];
+    if (getGls !== undefined) {
+      return getGls();
+    } else return null;
+  }, [gls, id]);
+  return gl;
+};
 
 export const useSerialIds = (): SerialId[] => {
   const serials = useSelector((s: RootState) => s.ctx.writeSerials);

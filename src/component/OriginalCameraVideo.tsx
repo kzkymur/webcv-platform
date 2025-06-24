@@ -17,6 +17,7 @@ import CanvasComponent from "./Canvas";
 import { CanvasId } from "@/store/ctx";
 import { useCtx } from "@/store/ctx/hooks";
 import { useResolution } from "./ResolutionSelector";
+import useFpsOptimization from "@/module/useFpsOptimization";
 
 export type Props = {
   id: CanvasId;
@@ -59,10 +60,7 @@ const OriginalCameraVideo: React.FC<Props> = (props) => {
     );
   }, [ctx, resolution, cameraResolution]);
 
-  useEffect(() => {
-    const loop = window.setInterval(renderCameraImg);
-    return () => window.clearInterval(loop);
-  }, [ctx, renderCameraImg]);
+  useFpsOptimization(renderCameraImg);
 
   return (
     <>

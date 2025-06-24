@@ -20,3 +20,23 @@ export const use2dCanvas = (
 
   return [ref, ctx];
 };
+
+export const useGlCanvas = (
+  resolution?: Resolution
+): [RefObject<HTMLCanvasElement>, WebGLRenderingContext | null] => {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const [gl, setGlCtx] = useState<WebGLRenderingContext | null>(null);
+
+  useEffect(() => {
+    if (ref.current === null) return;
+
+    if (resolution) {
+      ref.current.width = resolution.w;
+      ref.current.height = resolution.h;
+    }
+
+    setGlCtx(ref.current.getContext("webgl2"));
+  }, [ref.current, resolution]);
+
+  return [ref, gl];
+};

@@ -1,9 +1,10 @@
 import { Action } from "redux";
-import { CanvasId, GetCtx, SerialId, WriteSerialPort } from ".";
+import { CanvasId, GetCtx, GetGlCtx, SerialId, WriteSerialPort } from ".";
 
 export const ActionTypes = {
   setWasmModule: "SETWASMMODULE",
   setCtx: "SETCTX",
+  setGlCtx: "SETGLCTX",
   setWriteSerialPort: "SETWRITESERIALPORT",
 } as const;
 
@@ -20,6 +21,13 @@ interface SetCtx extends Action {
     getCtx: GetCtx | undefined;
   };
 }
+interface SetGlCtx extends Action {
+  type: typeof ActionTypes.setGlCtx;
+  payload: {
+    canvasId: CanvasId;
+    getGlCtx: GetGlCtx | undefined;
+  };
+}
 interface SetWriteSerialPort extends Action {
   type: typeof ActionTypes.setWriteSerialPort;
   payload: {
@@ -28,6 +36,6 @@ interface SetWriteSerialPort extends Action {
   };
 }
 
-type ActionType = SetWasmModule | SetCtx | SetWriteSerialPort;
+type ActionType = SetWasmModule | SetCtx | SetGlCtx | SetWriteSerialPort;
 
 export default ActionType;
