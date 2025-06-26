@@ -1,4 +1,5 @@
 import { WriteSerialPort } from "@/store/ctx";
+import { crampGalvoCoordinate, GALVO_MAX_X, GALVO_MAX_Y } from "@/util/calcHomography";
 
 type Coordinate = {
   x: number;
@@ -15,7 +16,11 @@ class TeencyCommunicator {
   };
   public setGalvoPos = (coordinate: Coordinate) => {
     console.log(coordinate);
-    this.send(`B${Math.floor(coordinate.x)},${Math.floor(coordinate.y)}`);
+    const calibratedCoordinate = crampGalvoCoordinate({
+      x: (coordinate.x + GALVO_MAX_X / 2 + 1) % (GALVO_MAX_X + 1),
+      y: (coordinate.y + GALVO_MAX_Y / 2 + 1) % (GALVO_MAX_Y + 1),
+    });
+    this.send(`B${Math.floor(calibratedCoordinate.x)},${Math.floor(calibratedCoordinate.y)}`);
   };
 }
 

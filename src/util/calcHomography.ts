@@ -10,10 +10,15 @@ export type Coordinate = {
   y: number;
 };
 
-const GALVO_MAX_X = 65535;
-const GALVO_MIN_X = 0;
-const GALVO_MAX_Y = 65535;
-const GALVO_MIN_Y = 0;
+export const GALVO_MAX_X = 65534;
+export const GALVO_MIN_X = 0;
+export const GALVO_MAX_Y = 65534;
+export const GALVO_MIN_Y = 0;
+
+export const crampGalvoCoordinate = (coordinate: Coordinate): Coordinate => ({
+  x: Math.max(GALVO_MIN_X, Math.min(GALVO_MAX_X, coordinate.x)),
+  y: Math.max(GALVO_MIN_Y, Math.min(GALVO_MAX_Y, coordinate.y)),
+});
 
 const detectWhitePixels = (
   arr_1: Uint8ClampedArray,
@@ -109,7 +114,7 @@ export const calcHomography = async (
         30,
         duration
       );
-      await sleep(10);
+      await sleep(100);
       teency.setGalvoPos({ x, y });
       const [detect, camera] = await detectResult;
       console.log(detect, camera);
