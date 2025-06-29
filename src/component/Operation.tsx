@@ -4,7 +4,7 @@ import { Slider } from "@mui/material";
 import TableRow from "@mui/material/TableRow";
 import TableCell from "@mui/material/TableCell";
 import { OperationId } from "@/util/operation";
-import { NodeId } from "./Node";
+import { NodeId } from "../node/Node";
 import { useOperation } from "@/util/operation/hooks";
 
 export type Props = {
@@ -13,7 +13,7 @@ export type Props = {
   onClick?: (id: number) => void;
 };
 
-const ColoredSlider = styled(Slider)<{ $color: string }>`
+const ColoredSlider = styled(Slider) <{ $color: string }>`
   display: flex;
   width: 150px;
   .MuiSlider-thumb {

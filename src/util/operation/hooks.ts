@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useStore } from "@/module/useStore";
-import { NodeId } from "@/component/Node";
+import { NodeId } from "@/node/Node";
 import { Operation, OperationId, OperationType } from ".";
 import {
   getCurrentNamespace,
@@ -21,11 +21,11 @@ const latestOperationIdKey = (id: NodeId) => `latest-operation-id-${id}`;
 export const useOperationMap = (
   id: NodeId
 ): [
-  OperationMap,
-  OperationId,
-  (o: Operation) => void,
-  (id: OperationId) => void
-] => {
+    OperationMap,
+    OperationId,
+    (o: Operation) => void,
+    (id: OperationId) => void
+  ] => {
   const [operationMap, setOperationMap] = useStore<OperationMap>(
     operationMapKey(id),
     undefined,
@@ -74,14 +74,14 @@ export const useOperationIds = (
     () =>
       map !== null
         ? (Object.entries(map)
-            .map(([id, type]) =>
-              targetTypes === undefined
-                ? Number(id)
-                : targetTypes.includes(type)
+          .map(([id, type]) =>
+            targetTypes === undefined
+              ? Number(id)
+              : targetTypes.includes(type)
                 ? Number(id)
                 : undefined
-            )
-            .filter((v) => v !== undefined) as number[])
+          )
+          .filter((v) => v !== undefined) as number[])
         : [],
     [targetTypes, map]
   );

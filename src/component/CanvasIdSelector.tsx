@@ -3,7 +3,7 @@ import { CanvasId } from "@/store/ctx";
 import { useCtxIds } from "@/store/ctx/hooks";
 import { useStore } from "@/module/useStore";
 import SelectBox from "./SelectBox";
-import { NodeKey } from "./Nodes";
+import { NodeKey } from "../node/Nodes";
 import { useNodeIds } from "@/module/useNode";
 
 export type Props = {

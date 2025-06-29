@@ -4,18 +4,18 @@ import { Button } from "@mui/material";
 import { useStore } from "@/module/useStore";
 import { CanvasId } from "@/store/ctx";
 import { useCtx, useSerialIds, useWriteSerial } from "@/store/ctx/hooks";
-import CanvasComponent from "./Canvas";
-import CanavsIdSelector from "./CanvasIdSelector";
+import CanvasComponent from "../component/Canvas";
+import CanavsIdSelector from "../component/CanvasIdSelector";
 import TeencyCommunicator from "@/module/teencyInterface";
-import SelectBox from "./SelectBox";
+import SelectBox from "../component/SelectBox";
 import useFpsOptimization from "@/module/useFpsOptimization";
 import { keys as opeKeys } from "./GalvoOperations";
 import { keys as homoKeys } from "./GalvoHomography";
 import { renderCopy } from "@/util/canvas";
-import OperationsForSequence from "./OperationsForSequence";
+import OperationsForSequence from "../component/OperationsForSequence";
 import { Sequencer } from "@/util/sequencer";
 import { OperationId } from "@/util/operation";
-import SequencerComponent from "./Sequencer";
+import SequencerComponent from "../component/Sequencer";
 import { cloneInstance } from "@/util";
 
 export type Props = {
@@ -82,7 +82,7 @@ const GalvoSequencer: React.FC<Props> = (props) => {
     [sequencer, setSequencer]
   );
   const [isPlaying, setIsPlaying] = useState(false);
-  const [stop, setStop] = useState<() => void>(() => () => {});
+  const [stop, setStop] = useState<() => void>(() => () => { });
   const playOnlyRender = useCallback(() => {
     if (sequencer === null || ctx === null || isPlaying) return;
     setIsPlaying(true);

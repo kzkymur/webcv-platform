@@ -1,7 +1,7 @@
-import { NodeKey } from "@/component/Nodes";
+import { NodeKey } from "@/node/Nodes";
 import { useStore } from "./useStore";
 import { useCallback, useMemo } from "react";
-import { NodeId } from "@/component/Node";
+import { NodeId } from "@/node/Node";
 
 type NodeMap = Record<NodeId, NodeKey>;
 
@@ -49,14 +49,14 @@ export const useNodeIds = (targetNodeKeys?: NodeKey[]): NodeId[] => {
     () =>
       nodeMap !== null
         ? (Object.entries(nodeMap)
-            .map(([id, key]) =>
-              targetNodeKeys === undefined
-                ? Number(id)
-                : targetNodeKeys.includes(key)
+          .map(([id, key]) =>
+            targetNodeKeys === undefined
+              ? Number(id)
+              : targetNodeKeys.includes(key)
                 ? Number(id)
                 : undefined
-            )
-            .filter((v) => v !== undefined) as number[])
+          )
+          .filter((v) => v !== undefined) as number[])
         : [],
     [targetNodeKeys, nodeMap]
   );

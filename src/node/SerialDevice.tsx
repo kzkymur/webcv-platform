@@ -6,7 +6,7 @@ import { SetSendMsgSp } from "@/store/ctx/action";
 import StorageJs from "@kzkymur/storage";
 import { useStorageUnique } from "@kzkymur/storage/react";
 import { NodeId } from "./Node";
-import SelectBox from "./SelectBox";
+import SelectBox from "../component/SelectBox";
 
 type Props = {
   id: NodeId;
@@ -64,13 +64,13 @@ const SerialDevice: React.FC<Props> = (props) => {
       port === null || port.writable === null
         ? undefined
         : async (text: string) => {
-            if (port === null || port.writable === null) return false;
-            const encoder = new TextEncoder();
-            const writer = port.writable.getWriter();
-            await writer.write(encoder.encode(text + "\n"));
-            writer.releaseLock();
-            return true;
-          },
+          if (port === null || port.writable === null) return false;
+          const encoder = new TextEncoder();
+          const writer = port.writable.getWriter();
+          await writer.write(encoder.encode(text + "\n"));
+          writer.releaseLock();
+          return true;
+        },
     [port]
   );
   useEffect(() => {

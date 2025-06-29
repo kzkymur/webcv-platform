@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import OriginalCameraVideo from "./OriginalCameraVideo";
+import OriginalCameraVideo from "../component/OriginalCameraVideo";
 import CalibratedCamera from "./CameraCalibratedCamera";
 import CameraDeviceSelector from "./CameraDeviceSelector";
 import GalvoHomography from "./GalvoHomography";

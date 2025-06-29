@@ -10,12 +10,12 @@ import {
   useWasmModule,
   useWriteSerial,
 } from "@/store/ctx/hooks";
-import CanvasComponent from "./Canvas";
-import { useResolution } from "./ResolutionSelector";
-import CanavsIdSelector from "./CanvasIdSelector";
+import CanvasComponent from "../component/Canvas";
+import { useResolution } from "../component/ResolutionSelector";
+import CanavsIdSelector from "../component/CanvasIdSelector";
 import { Coordinate, calcHomography, renderDots } from "@/util/calcHomography";
 import TeencyCommunicator from "@/module/teencyInterface";
-import SelectBox from "./SelectBox";
+import SelectBox from "../component/SelectBox";
 import useFpsOptimization from "@/module/useFpsOptimization";
 import { affine, arrayToMatrix } from "@/util/math";
 

@@ -7,9 +7,9 @@ import useFpsOptimization from "@/module/useFpsOptimization";
 import { CanvasId } from "@/store/ctx";
 import { useCtx, useGlCtx, useWasmModule } from "@/store/ctx/hooks";
 import { calcUndistMap, calibration } from "@/util/calibrateCamera";
-import { GlCanvasComponent } from "./Canvas";
-import { useResolution } from "./ResolutionSelector";
-import CanavsIdSelector from "./CanvasIdSelector";
+import { GlCanvasComponent } from "../component/Canvas";
+import { useResolution } from "../component/ResolutionSelector";
+import CanavsIdSelector from "../component/CanvasIdSelector";
 import {
   MapXY,
   createRenderTexture,
@@ -78,10 +78,10 @@ const CalibratedCamera: React.FC<Props> = (props) => {
   const draw = useMemo(() => {
     return gl !== null && mapXY.length !== 0
       ? createRenderTexture(
-          gl,
-          makeObjTexture(mapXY, resolution.w, REMAP_TEXTURE_SAMPLING_RATE),
-          resolution.w / resolution.h
-        )
+        gl,
+        makeObjTexture(mapXY, resolution.w, REMAP_TEXTURE_SAMPLING_RATE),
+        resolution.w / resolution.h
+      )
       : null;
   }, [gl, mapXY, resolution]);
 

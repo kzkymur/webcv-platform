@@ -3,7 +3,7 @@ import styled from "styled-components";
 import TableRow from "@mui/material/TableRow";
 import TableCell from "@mui/material/TableCell";
 import { OperationId } from "@/util/operation";
-import { NodeId } from "./Node";
+import { NodeId } from "../node/Node";
 import { useOperation } from "@/util/operation/hooks";
 import { Button } from "@mui/material";
 

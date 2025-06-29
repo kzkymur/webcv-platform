@@ -2,7 +2,7 @@ import React, { useCallback, useState } from "react";
 import styled from "styled-components";
 import { Button } from "@mui/material";
 import { useNodeMap } from "@/module/useNode";
-import { NodeList, isNodeKey } from "./Nodes";
+import { NodeList, isNodeKey } from "../node/Nodes";
 import SelectBox from "./SelectBox";
 
 const Container = styled.div`

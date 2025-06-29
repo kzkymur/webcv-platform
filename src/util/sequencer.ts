@@ -6,7 +6,7 @@ import {
   execOperation,
   shotFactory,
 } from "./operation";
-import { NodeId } from "@/component/Node";
+import { NodeId } from "@/node/Node";
 import {
   getCurrentNamespace,
   updateNamespacedStore,

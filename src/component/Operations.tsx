@@ -6,7 +6,7 @@ import TableBody from "@mui/material/TableBody";
 import TableRow from "@mui/material/TableRow";
 import TableCell from "@mui/material/TableCell";
 import Paper from "@mui/material/Paper";
-import { NodeId } from "./Node";
+import { NodeId } from "../node/Node";
 import { useOperationMap } from "@/util/operation/hooks";
 import OperationComponent from "./Operation";
 
