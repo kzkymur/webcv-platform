@@ -110,3 +110,8 @@ export const getCrossPoint = (
     y: (c2 * a1 - c1 * a2) / (b1 * a2 - b2 * a1),
   };
 };
+
+export const addCordinate = (a: Coordinate, b: Coordinate): Coordinate => ({
+  x: a.x + b.x,
+  y: a.y + b.y,
+});

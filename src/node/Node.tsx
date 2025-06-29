@@ -13,6 +13,8 @@ export const keys = {
   nodeSize: "nodeSize",
   nodeIndex: "nodeIndex",
   latestIndex: "latestIndex",
+  zoomLevel: "zoomLevel",
+  boardOffset: "boardOffset",
 } as const;
 
 type Position = {
@@ -37,6 +39,7 @@ const getDefault = (pos: Partial<Position>, size: Partial<Size>) => ({
 export const NodeField = styled.div`
   width: 100%;
   height: 100%;
+  overflow: hidden;
 `;
 
 export const IdLabel = styled.span`
@@ -85,6 +88,11 @@ type Props = {
 const Node: React.FC<Props> = (props) => {
   const [, , del] = useNodeMap();
   const [grid] = useStore<number>(keys.gridUnit, undefined, 10);
+  const [zoomLevel] = useStore<number>(keys.zoomLevel, undefined, 1.0);
+  const [boardOffset] = useStore<{ x: number, y: number }>(
+    keys.boardOffset,
+  );
+
   const [latestIndex, updateLatestIndex] = useStore<number>(
     keys.latestIndex,
     undefined,
@@ -96,14 +104,17 @@ const Node: React.FC<Props> = (props) => {
     1
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  console.log(boardOffset)
   const [pos, setPos] = useStore<Position>(keys.nodePosition, props.id, {
-    x: getRandomInt(100),
-    y: getRandomInt(100),
+    x: - (boardOffset?.x || 0) + getRandomInt(100),
+    y: - (boardOffset?.y || 0) + getRandomInt(100),
   });
   const [size, setSize] = useStore<Size>(keys.nodeSize, props.id, {
     width: 200,
     height: 200,
   });
+
+  const effectiveGrid = useMemo(() => (grid || 0) * (zoomLevel || 0), [grid, zoomLevel]);
   const defaultParams = useMemo(() => getDefault(pos!, size!), [pos, size]);
   const onDragStop = useCallback(
     (_: unknown, d: Position) => setPos({ x: d.x, y: d.y }),
@@ -132,12 +143,14 @@ const Node: React.FC<Props> = (props) => {
 
   return (
     <Rnd
-      dragGrid={[grid!, grid!]}
+      dragGrid={[effectiveGrid / zoomLevel, effectiveGrid]}
       default={defaultParams}
       onDragStop={onDragStop}
       onResizeStop={onResizeStop}
       cancel=".rnd-cancel"
       style={{ zIndex: `${nodeIndex}` }}
+      scale={zoomLevel}
+      data-rnd="true"
     >
       <NodeContainer ref={containerRef} onDoubleClick={bringInFront}>
         <Header>

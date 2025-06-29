@@ -45,11 +45,22 @@ export const useGlobalStore = <T>(
   return [value, update, del];
 };
 
-export const useStore = <T>(
+export function useStore<T>(
+  key: string,
+  id?: Id
+): [T | null, (v: T) => void, () => void];          // initialValue なし
+
+export function useStore<T>(
+  key: string,
+  id: Id | undefined,
+  initialValue: T
+): [T, (v: T) => void, () => void]; 
+
+export function useStore <T>(
   key: string,
   id?: Id,
   initialValue?: T
-): [T | null, (v: T) => void, () => void] => {
+): [ T | null, (v: T) => void, () => void] {
   const KEY = useMemo(() => fetchId(key, id), [key, id]);
   const [count, increment] = useCounter();
   const update = useCallback(
@@ -70,7 +81,7 @@ export const useStore = <T>(
   );
   useEffect(() => {
     if (value === null && initialValue !== undefined) update(initialValue);
-  }, []);
+  }, [initialValue]);
   useEffect(() => {
     addNamespacedStoreListener(KEY, increment);
     return () => removeNamespacedStoreListener(KEY, increment);
