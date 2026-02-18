@@ -9,21 +9,37 @@ import { WasmWorkerClient } from "@/shared/wasm/client";
 export default function CalibrationClient() {
   const { stream } = useCamera({ key: "camera:web" });
   const [points, setPoints] = useState<Float32Array | null>(null);
+  const [frameSize, setFrameSize] = useState<{ w: number; h: number }>({ w: 640, h: 360 });
   const clientRef = useRef<WasmWorkerClient | null>(null);
   useEffect(() => {
     clientRef.current = new WasmWorkerClient();
     return () => clientRef.current?.dispose();
   }, []);
 
+  // Try to pick up the camera's native aspect on stream change
+  useEffect(() => {
+    const track = stream?.getVideoTracks?.()[0];
+    const s = track?.getSettings?.();
+    if (s?.width && s?.height) {
+      const w = 640;
+      const h = Math.round((s.height / s.width) * w);
+      setFrameSize({ w, h });
+    }
+  }, [stream]);
+
   async function captureRGBA(): Promise<{ w: number; h: number; data: Uint8ClampedArray } | null> {
     const video = document.querySelector("video");
     if (!video) return null;
-    const w = 640, h = 360;
+    // Preserve camera aspect ratio; scale to target width 640
+    const vidW = (video as HTMLVideoElement).videoWidth || 640;
+    const vidH = (video as HTMLVideoElement).videoHeight || 480;
+    const w = 640;
+    const h = Math.round(vidH * (w / vidW));
     const cv = document.createElement("canvas");
     cv.width = w; cv.height = h;
     const ctx = cv.getContext("2d");
     if (!ctx) return null;
-    ctx.drawImage(video, 0, 0, w, h);
+    ctx.drawImage(video as HTMLVideoElement, 0, 0, w, h);
     const { data } = ctx.getImageData(0, 0, w, h);
     return { w, h, data };
   }
@@ -38,15 +54,16 @@ export default function CalibrationClient() {
             const client = clientRef.current; if (!client) return;
             const res = await client.cvFindChessboardCorners(frame.data, frame.w, frame.h);
             setPoints(res.found ? res.points : null);
+            setFrameSize({ w: frame.w, h: frame.h });
           }}>チェスボード検出</button>
         </div>
       </aside>
       <header className="header"><b>Calibration</b></header>
       <main className="main">
         <section>
-          <CameraCanvas stream={stream} width={640} height={360} />
+          <CameraCanvas stream={stream} width={640} height={Math.round(frameSize.h * (640 / frameSize.w))} />
         </section>
-        {points && <CornerOverlay points={points} width={640} height={360} />}
+        {points && <CornerOverlay points={points} width={frameSize.w} height={frameSize.h} />}
       </main>
     </>
   );
