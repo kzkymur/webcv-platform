@@ -1,12 +1,19 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "target": "ESNext",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@wasm": ["./src-wasm/index.js"],
-      "@mui/styled-engine": ["./node_modules/@mui/styled-engine-sc"]
+      "@/*": [
+        "./app/*"
+      ],
+      "@wasm": [
+        "./src-wasm/index.js"
+      ]
     },
     "allowJs": true,
     "skipLibCheck": true,
@@ -17,11 +24,22 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "isolatedModules": false,
-    "noEmit": false,
-    "jsx": "react-jsx",
-    "sourceMap": true,
-    "outDir": "dist"
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
-  "include": ["src"]
+  "include": [
+    "app",
+    "next-env.d.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
