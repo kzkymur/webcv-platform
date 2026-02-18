@@ -108,7 +108,8 @@ function ImportPanel({
     const bmp = await decodeImage(f);
     const kind: FileType = grayscale ? "grayscale-image" : "rgb-image";
     const rgba = grayscale ? toGrayscale(bmp.data) : bmp.data;
-    return { path: p, type: kind, data: rgba.buffer, width: bmp.width, height: bmp.height, channels: 4 };
+    // Cast is safe: Uint8ClampedArray.buffer is an ArrayBuffer in browsers
+    return { path: p, type: kind, data: rgba.buffer as ArrayBuffer, width: bmp.width, height: bmp.height, channels: 4 };
   }
 
   return (

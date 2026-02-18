@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import ModuleWrapper, { F32AP, F64AP, U32AP, U8AP } from "./wrapper";
 import { useWasmModule } from "@/shared/store/ctx/hooks";
 
-abstract class WM<Data extends ArrayBuffer> {
+abstract class WM<Data> {
   protected module: EmscriptenModule;
   protected mw: ModuleWrapper;
   public abstract pointer: number;

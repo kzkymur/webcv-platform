@@ -8,7 +8,7 @@ export type FileType =
 export type FileEntry = {
   path: string; // e.g. folder/sub/img1
   type: FileType;
-  data: ArrayBufferLike; // binary payload (ArrayBuffer or SharedArrayBuffer)
+  data: ArrayBuffer; // binary payload
   width?: number;
   height?: number;
   channels?: number; // 1 or 4 for images

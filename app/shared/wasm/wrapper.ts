@@ -1,7 +1,7 @@
 import { Brand } from "@/shared/util";
 
 interface EmscriptenModuleWithCcall extends EmscriptenModule {
-  ccall: typeof ccall;
+  ccall: (...args: any[]) => any;
 }
 
 export type U8AP = Brand<number, "U8AP">;

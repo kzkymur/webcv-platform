@@ -104,10 +104,11 @@ export async function getFile(path: string): Promise<FileEntry | undefined> {
     if (stmt.step()) {
       const row = stmt.getAsObject();
       const data = row["data"] as Uint8Array;
+      const view = data.slice();
       return {
         path: row["path"] as string,
         type: row["type"] as any,
-        data: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+        data: view.buffer as ArrayBuffer,
         width: (row["width"] as number) ?? undefined,
         height: (row["height"] as number) ?? undefined,
         channels: (row["channels"] as number) ?? undefined,
@@ -133,10 +134,11 @@ export async function listFiles(): Promise<FileEntry[]> {
     while (stmt.step()) {
       const row = stmt.getAsObject();
       const blob = row["data"] as Uint8Array;
+      const view = blob.slice();
       out.push({
         path: row["path"] as string,
         type: row["type"] as any,
-        data: blob.buffer.slice(blob.byteOffset, blob.byteOffset + blob.byteLength),
+        data: view.buffer as ArrayBuffer,
         width: (row["width"] as number) ?? undefined,
         height: (row["height"] as number) ?? undefined,
         channels: (row["channels"] as number) ?? undefined,
