@@ -1,5 +1,5 @@
 {
-  "name": "galvoweb3",
+  "name": "webcv-platform",
   "private": true,
   "version": "0.1.0",
   "description": "GalvoWeb 3.0 – Next.js SSG app with Web Serial, IndexedDB and WASM interop",

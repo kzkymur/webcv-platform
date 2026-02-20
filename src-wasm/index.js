@@ -27,7 +27,7 @@ Module['ready'] = new Promise((resolve, reject) => {
   readyPromiseResolve = resolve;
   readyPromiseReject = reject;
 });
-["_main","getExceptionMessage","___get_exception_message","_free","_memory","_helloWorld","_getU8Buffer","_getI32Buffer","_getU32Buffer","_getFloatBuffer","_getDoubleBuffer","_getImgBuffer","_clearBuffer","_timesBy2","_findChessboardCorners","_calcInnerParams","_calcUndistMap","_undistort","_undistortPoint","_calcHomography","_Transform","___indirect_function_table","_fflush","onRuntimeInitialized"].forEach((prop) => {
+["_main","getExceptionMessage","___get_exception_message","_free","_memory","_helloWorld","_getU8Buffer","_getI32Buffer","_getU32Buffer","_getFloatBuffer","_getDoubleBuffer","_getImgBuffer","_clearBuffer","_timesBy2","_findChessboardCorners","_calcInnerParams","_calcInnerParamsExt","_calcInnerParamsFisheyeExt","_calcUndistMap","_undistort","_undistortPoint","_calcHomography","_calcHomographyUndist","_Transform","_calcInterRemapUndist","___indirect_function_table","_fflush","onRuntimeInitialized"].forEach((prop) => {
   if (!Object.getOwnPropertyDescriptor(Module['ready'], prop)) {
     Object.defineProperty(Module['ready'], prop, {
       get: () => abort('You are getting ' + prop + ' on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js'),
@@ -5005,11 +5005,15 @@ var _free = Module['_free'] = createExportWrapper('free');
 var _timesBy2 = Module['_timesBy2'] = createExportWrapper('timesBy2');
 var _findChessboardCorners = Module['_findChessboardCorners'] = createExportWrapper('findChessboardCorners');
 var _calcInnerParams = Module['_calcInnerParams'] = createExportWrapper('calcInnerParams');
+var _calcInnerParamsExt = Module['_calcInnerParamsExt'] = createExportWrapper('calcInnerParamsExt');
+var _calcInnerParamsFisheyeExt = Module['_calcInnerParamsFisheyeExt'] = createExportWrapper('calcInnerParamsFisheyeExt');
 var _calcUndistMap = Module['_calcUndistMap'] = createExportWrapper('calcUndistMap');
 var _undistort = Module['_undistort'] = createExportWrapper('undistort');
 var _undistortPoint = Module['_undistortPoint'] = createExportWrapper('undistortPoint');
 var _calcHomography = Module['_calcHomography'] = createExportWrapper('calcHomography');
+var _calcHomographyUndist = Module['_calcHomographyUndist'] = createExportWrapper('calcHomographyUndist');
 var _Transform = Module['_Transform'] = createExportWrapper('Transform');
+var _calcInterRemapUndist = Module['_calcInterRemapUndist'] = createExportWrapper('calcInterRemapUndist');
 var ___cxa_free_exception = createExportWrapper('__cxa_free_exception');
 var _fflush = Module['_fflush'] = createExportWrapper('fflush');
 var ___errno_location = createExportWrapper('__errno_location');
@@ -5108,6 +5112,17 @@ function invoke_iiiii(index,a1,a2,a3,a4) {
   var sp = stackSave();
   try {
     return getWasmTableEntry(index)(a1,a2,a3,a4);
+  } catch(e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viii(index,a1,a2,a3) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1,a2,a3);
   } catch(e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -5214,17 +5229,6 @@ function invoke_viiiidiid(index,a1,a2,a3,a4,a5,a6,a7,a8) {
   }
 }
 
-function invoke_viii(index,a1,a2,a3) {
-  var sp = stackSave();
-  try {
-    getWasmTableEntry(index)(a1,a2,a3);
-  } catch(e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
 function invoke_viif(index,a1,a2,a3) {
   var sp = stackSave();
   try {
@@ -5247,10 +5251,10 @@ function invoke_iif(index,a1,a2) {
   }
 }
 
-function invoke_iiiiiii(index,a1,a2,a3,a4,a5,a6) {
+function invoke_vi(index,a1) {
   var sp = stackSave();
   try {
-    return getWasmTableEntry(index)(a1,a2,a3,a4,a5,a6);
+    getWasmTableEntry(index)(a1);
   } catch(e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -5258,10 +5262,10 @@ function invoke_iiiiiii(index,a1,a2,a3,a4,a5,a6) {
   }
 }
 
-function invoke_vi(index,a1) {
+function invoke_iiiiiii(index,a1,a2,a3,a4,a5,a6) {
   var sp = stackSave();
   try {
-    getWasmTableEntry(index)(a1);
+    return getWasmTableEntry(index)(a1,a2,a3,a4,a5,a6);
   } catch(e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;

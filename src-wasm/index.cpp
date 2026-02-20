@@ -3,6 +3,7 @@
 #include <cstring>
 #include <opencv2/core/types.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/calib3d.hpp>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -31,6 +32,12 @@ cv::Mat readMat32F(const void* pointer, int width, int height) {
   cv::Mat img(height, width, CV_32F);
   memcpy(img.data, pointer, sizeof(float) * width * height);
   return img;
+}
+cv::Mat readPointsVec2f(const void* pointer, int length) {
+  // Nx1, CV_32FC2 (compatible with writeMat(vecPoint2f2Mat(...)))
+  cv::Mat pts(length, 1, CV_32FC2);
+  memcpy(pts.data, pointer, sizeof(float) * length * 2);
+  return pts;
 }
 cv::Mat readMat64F(const void* pointer, int width, int height) {
   cv::Mat img(height, width, CV_64F);
@@ -156,6 +163,18 @@ EXTERN EMSCRIPTEN_KEEPALIVE bool findChessboardCorners (const void* pointer, int
   }
 }
 
+static void buildChessObjectPoints(std::vector<std::vector<cv::Point3f>>& objPts, int nImages) {
+  objPts.clear();
+  std::vector<cv::Point3f> corners_local;
+  corners_local.reserve(CHESS_NUM_X * CHESS_NUM_Y);
+  for (int j = 0; j < CHESS_NUM_X * CHESS_NUM_Y; j++) {
+    float x = (float)(BLOCK_SIZE * (j % CHESS_NUM_X));
+    float y = (float)(BLOCK_SIZE * (j / CHESS_NUM_X));
+    corners_local.push_back(cv::Point3f(x, y, 0.0f));
+  }
+  for (int i = 0; i < nImages; i++) objPts.push_back(corners_local);
+}
+
 EXTERN EMSCRIPTEN_KEEPALIVE bool calcInnerParams(uint32_t* pointersPointer, const int nPointer, const int imgWidth, const int imgHeight, void* intrMatrixDest, void* distCoeffsDest) {
   cv::Mat intr = cv::Mat::zeros(3, 3, CV_64F);
   cv::Mat dist = cv::Mat::zeros(8, 1, CV_64F);
@@ -169,14 +188,11 @@ EXTERN EMSCRIPTEN_KEEPALIVE bool calcInnerParams(uint32_t* pointersPointer, cons
   cv::Size imageSize(imgWidth, imgHeight);
   vector<vector<cv::Point3f>> corners_3d = {};
   vector<vector<cv::Point2f>> corners_imgs = {};
-
+  buildChessObjectPoints(corners_3d, nPointer);
   for (int i = 0; i < nPointer; i++) {
-    vector<cv::Point3f> corners_local = {};
-    for (int j = 0; j < CHESS_NUM_X * CHESS_NUM_Y; j++) {
-      corners_local.push_back(cv::Point3f(BLOCK_SIZE * (j % CHESS_NUM_X), BLOCK_SIZE * (j / CHESS_NUM_Y), 0.0f));
-    }
-    corners_3d.push_back(corners_local);
-    corners_imgs.push_back(mat2VecPoint2f(readMat32F((void *)pointersPointer[i], 2, CHESS_NUM_X * CHESS_NUM_Y)));
+    // points are stored as Nx1 CV_32FC2
+    cv::Mat pts = readPointsVec2f((void*)pointersPointer[i], CHESS_NUM_X * CHESS_NUM_Y);
+    corners_imgs.push_back(mat2VecPoint2f(pts));
   }
 
   // インパラの計算
@@ -188,6 +204,80 @@ EXTERN EMSCRIPTEN_KEEPALIVE bool calcInnerParams(uint32_t* pointersPointer, cons
   dist.convertTo(dist, CV_32F);
   writeMat(intr, intrMatrixDest);
   writeMat(dist, distCoeffsDest);
+  return true;
+}
+
+EXTERN EMSCRIPTEN_KEEPALIVE bool calcInnerParamsExt(uint32_t* pointersPointer, const int nPointer, const int imgWidth, const int imgHeight, void* intrMatrixDest, void* distCoeffsDest, void* rvecsDest, void* tvecsDest) {
+  if (nPointer <= 0) return false;
+  cv::Size imageSize(imgWidth, imgHeight);
+  vector<vector<cv::Point3f>> objPts;
+  buildChessObjectPoints(objPts, nPointer);
+  vector<vector<cv::Point2f>> imgPts;
+  for (int i = 0; i < nPointer; i++) {
+    cv::Mat pts = readPointsVec2f((void*)pointersPointer[i], CHESS_NUM_X * CHESS_NUM_Y);
+    imgPts.push_back(mat2VecPoint2f(pts));
+  }
+  cv::Mat intr = cv::Mat::eye(3, 3, CV_64F);
+  cv::Mat dist = cv::Mat::zeros(8, 1, CV_64F);
+  vector<cv::Mat> rvecs, tvecs;
+  double rms = cv::calibrateCamera(objPts, imgPts, imageSize, intr, dist, rvecs, tvecs);
+  (void)rms;
+  intr.convertTo(intr, CV_32F);
+  dist.convertTo(dist, CV_32F);
+  writeMat(intr, intrMatrixDest);
+  writeMat(dist, distCoeffsDest);
+  // Flatten rvecs/tvecs to Nx3 float arrays
+  cv::Mat rv(nPointer, 3, CV_32F);
+  cv::Mat tv(nPointer, 3, CV_32F);
+  for (int i = 0; i < nPointer; i++) {
+    cv::Mat r, t;
+    rvecs[i].convertTo(r, CV_32F);
+    tvecs[i].convertTo(t, CV_32F);
+    for (int k = 0; k < 3; k++) {
+      rv.at<float>(i, k) = r.at<float>(k);
+      tv.at<float>(i, k) = t.at<float>(k);
+    }
+  }
+  writeMat(rv, rvecsDest);
+  writeMat(tv, tvecsDest);
+  return true;
+}
+
+EXTERN EMSCRIPTEN_KEEPALIVE bool calcInnerParamsFisheyeExt(uint32_t* pointersPointer, const int nPointer, const int imgWidth, const int imgHeight, void* intrMatrixDest, void* distCoeffsDest, void* rvecsDest, void* tvecsDest) {
+  if (nPointer <= 0) return false;
+  using namespace cv::fisheye;
+  cv::Size imageSize(imgWidth, imgHeight);
+  vector<vector<cv::Point3f>> objPts;
+  buildChessObjectPoints(objPts, nPointer);
+  vector<vector<cv::Point2f>> imgPts;
+  for (int i = 0; i < nPointer; i++) {
+    cv::Mat pts = readPointsVec2f((void*)pointersPointer[i], CHESS_NUM_X * CHESS_NUM_Y);
+    imgPts.push_back(mat2VecPoint2f(pts));
+  }
+  cv::Mat intr = cv::Mat::eye(3, 3, CV_64F);
+  cv::Mat dist = cv::Mat::zeros(4, 1, CV_64F); // k1..k4
+  vector<cv::Mat> rvecs, tvecs;
+  double rms = calibrate(objPts, imgPts, imageSize, intr, dist, rvecs, tvecs, 0,
+                         cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 20, 1e-6));
+  (void)rms;
+  intr.convertTo(intr, CV_32F);
+  dist.convertTo(dist, CV_32F);
+  writeMat(intr, intrMatrixDest);
+  writeMat(dist, distCoeffsDest);
+  // Flatten rvecs/tvecs to Nx3 float arrays
+  cv::Mat rv(nPointer, 3, CV_32F);
+  cv::Mat tv(nPointer, 3, CV_32F);
+  for (int i = 0; i < nPointer; i++) {
+    cv::Mat r, t;
+    rvecs[i].convertTo(r, CV_32F);
+    tvecs[i].convertTo(t, CV_32F);
+    for (int k = 0; k < 3; k++) {
+      rv.at<float>(i, k) = r.at<float>(k);
+      tv.at<float>(i, k) = t.at<float>(k);
+    }
+  }
+  writeMat(rv, rvecsDest);
+  writeMat(tv, tvecsDest);
   return true;
 }
 
@@ -246,6 +336,27 @@ EXTERN EMSCRIPTEN_KEEPALIVE void calcHomography(void * galvoDots, void * cameraD
   writeMat(h, dest);
 }
 
+EXTERN EMSCRIPTEN_KEEPALIVE void calcHomographyUndist(void * aDots, void * bDots, int length, void* intrA, void* distA, void* intrB, void* distB, void* dest) {
+  // Inputs are points in raw image pixel coordinates. Undistort both sets, then compute H from A->B in undistorted pixel space.
+  // Read points
+  cv::Mat aMat = readPointsVec2f(aDots, length);
+  cv::Mat bMat = readPointsVec2f(bDots, length);
+  // Undistort
+  cv::Mat intrAm = readMat32F(intrA, 3, 3);
+  cv::Mat distAm = readMat32F(distA, 1, 8);
+  cv::Mat intrBm = readMat32F(intrB, 3, 3);
+  cv::Mat distBm = readMat32F(distB, 1, 8);
+  cv::Mat aUD, bUD;
+  cv::undistortPoints(aMat, aUD, intrAm, distAm, cv::noArray(), intrAm);
+  cv::undistortPoints(bMat, bUD, intrBm, distBm, cv::noArray(), intrBm);
+  // Compute H from A to B
+  std::vector<cv::Point2f> aPts = mat2VecPoint2f(aUD);
+  std::vector<cv::Point2f> bPts = mat2VecPoint2f(bUD);
+  cv::Mat h = cv::findHomography(aPts, bPts, cv::RANSAC);
+  h.convertTo(h, CV_32F);
+  writeMat(h, dest);
+}
+
 EXTERN EMSCRIPTEN_KEEPALIVE void Transform(int x, int y, void * homography, void * cameraMat, void * distCoeffs, void* dest) {
   cv::Point2f p = cv::Point2f((float)x, (float)y);
   cv::Mat h = readMat32F(homography, 3, 3);
@@ -261,4 +372,43 @@ EXTERN EMSCRIPTEN_KEEPALIVE void Transform(int x, int y, void * homography, void
   destMat.at<cv::Point3f>(0) = resultPoint;
 
   writeMat(destMat, dest);
+}
+
+static inline cv::Point2f applyH(const cv::Mat& H, const cv::Point2f& p) {
+  float x = p.x, y = p.y;
+  float X = H.at<float>(0,0)*x + H.at<float>(0,1)*y + H.at<float>(0,2);
+  float Y = H.at<float>(1,0)*x + H.at<float>(1,1)*y + H.at<float>(1,2);
+  float Z = H.at<float>(2,0)*x + H.at<float>(2,1)*y + H.at<float>(2,2);
+  if (Z == 0.f) Z = 1e-6f;
+  return cv::Point2f(X/Z, Y/Z);
+}
+
+EXTERN EMSCRIPTEN_KEEPALIVE void calcInterRemapUndist(void * intrA, void * distA, int widthA, int heightA,
+                                                      void * intrB, void * distB, int widthB, int heightB,
+                                                      void * homographyAtoB,
+                                                      void * mapXDest, void * mapYDest) {
+  // Produce map such that for each pixel in A (raw pixel grid), we undistort -> apply H (A_undist -> B_undist) -> coordinates in B_undist pixel grid
+  // The output mapX/mapY has size widthA*heightA, sampling positions in B_undist.
+  cv::Mat intrAm = readMat32F(intrA, 3, 3);
+  cv::Mat distAm = readMat32F(distA, 1, 8);
+  cv::Mat intrBm = readMat32F(intrB, 3, 3);
+  cv::Mat distBm = readMat32F(distB, 1, 8);
+  (void)distBm; // not used (we map to undist domain of B)
+  cv::Mat H = readMat32F(homographyAtoB, 3, 3);
+  cv::Mat mapX(heightA, widthA, CV_32F);
+  cv::Mat mapY(heightA, widthA, CV_32F);
+
+  for (int y = 0; y < heightA; y++) {
+    for (int x = 0; x < widthA; x++) {
+      // Undistort A pixel
+      cv::Point2f pA((float)x, (float)y);
+      cv::Point2f uA = undistortPoint(pA, intrAm, distAm);
+      // Map to B undist pixel via H
+      cv::Point2f uB = applyH(H, uA);
+      mapX.at<float>(y, x) = uB.x;
+      mapY.at<float>(y, x) = uB.y;
+    }
+  }
+  writeMat(mapX, mapXDest);
+  writeMat(mapY, mapYDest);
 }

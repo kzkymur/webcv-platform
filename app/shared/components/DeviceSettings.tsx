@@ -12,17 +12,29 @@ export default function DeviceSettings() {
   useEffect(() => setIsClient(true), []);
 
   const [devices, setDevices] = useState<MediaDeviceInfoLite[]>([]);
-  const [webCamId, setWebCamId] = useState<string | null>(null);
-  const [thermalCamId, setThermalCamId] = useState<string | null>(null);
+  const [cameraIds, setCameraIds] = useState<string[]>([]);
   const [serial, setSerial] = useState<SerialCommunicator | null>(null);
   const [laserPct, setLaserPct] = useState(0);
   const [armed, setArmed] = useState(false);
+  const [cameraOpts, setCameraOpts] = useState<Record<string, { y16?: boolean }>>({});
 
   // Initialize selects from namespaced store so UI reflects current state
   useEffect(() => {
-    const st = readNamespacedStore<{ webCamId?: string; thermalCamId?: string }>();
-    setWebCamId(st.webCamId ?? null);
-    setThermalCamId(st.thermalCamId ?? null);
+    const st = readNamespacedStore<{ cameraIds?: string[]; webCamId?: string | null; thermalCamId?: string | null }>();
+    if (st.cameraIds && Array.isArray(st.cameraIds)) {
+      setCameraIds(st.cameraIds);
+    } else {
+      // Backward-compat: migrate legacy keys into a single list
+      const legacy = [st.webCamId, st.thermalCamId].filter((v): v is string => !!v);
+      setCameraIds(legacy);
+      if (legacy.length > 0) updateNamespacedStore({ cameraIds: legacy });
+    }
+  }, []);
+
+  // Load per-camera options on mount
+  useEffect(() => {
+    const st = readNamespacedStore<{ cameraOptions?: Record<string, { y16?: boolean }> }>();
+    setCameraOpts(st.cameraOptions || {});
   }, []);
 
   // Helper to (re)enumerate cameras
@@ -44,8 +56,12 @@ export default function DeviceSettings() {
 
   useEffect(() => {
     const ns = getCurrentNamespace();
-    updateNamespacedStore({ webCamId, thermalCamId }, ns);
-  }, [webCamId, thermalCamId]);
+    updateNamespacedStore({ cameraIds }, ns);
+  }, [cameraIds]);
+
+  useEffect(() => {
+    updateNamespacedStore({ cameraOptions: cameraOpts });
+  }, [cameraOpts]);
 
   // Compute feature support only after mount so SSR markup matches
   const serialSupported = isClient && typeof navigator !== "undefined" && !!(navigator as any).serial;
@@ -65,32 +81,54 @@ export default function DeviceSettings() {
   return (
     <div className="col">
       <div className="col">
-        <label>Web カメラ</label>
-        <select value={webCamId || ""} onChange={(e) => setWebCamId(e.target.value || null)} disabled={needsCameraPermission}>
-          <option value="">未選択</option>
-          {devices.map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || d.deviceId}
-            </option>
-          ))}
-        </select>
-        {needsCameraPermission && (
-          <div className="row" style={{ marginTop: 6 }}>
-            <button onClick={requestCameraAccess}>カメラへのアクセスを許可</button>
-            <span style={{ fontSize: 12, opacity: 0.8 }}>許可後に一覧が表示されます</span>
+        <label>Web カメラ（複数選択可）</label>
+        {cameraIds.map((id, idx) => (
+          <div className="row" key={idx} style={{ gap: 8, marginBottom: 6 }}>
+            <span style={{ width: 24, textAlign: "right" }}>#{idx + 1}</span>
+            <select
+              value={id}
+              onChange={(e) => {
+                const next = [...cameraIds];
+                next[idx] = e.target.value;
+                setCameraIds(next);
+              }}
+              disabled={needsCameraPermission}
+            >
+              <option value="">未選択</option>
+              {devices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || d.deviceId}
+                </option>
+              ))}
+            </select>
+            <label className="row" style={{ gap: 6 }}>
+              <input
+                type="checkbox"
+                disabled={!id}
+                checked={!!(id && cameraOpts[id]?.y16)}
+                onChange={(e) => {
+                  const did = id;
+                  if (!did) return;
+                  setCameraOpts((prev) => ({
+                    ...prev,
+                    [did]: { ...(prev[did] || {}), y16: e.target.checked },
+                  }));
+                }}
+              />
+              Y16
+            </label>
+            <button onClick={() => setCameraIds(cameraIds.filter((_, i) => i !== idx))}>削除</button>
           </div>
-        )}
-      </div>
-      <div className="col">
-        <label>サーモグラフィカメラ</label>
-        <select value={thermalCamId || ""} onChange={(e) => setThermalCamId(e.target.value || null)} disabled={needsCameraPermission}>
-          <option value="">未選択</option>
-          {devices.map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || d.deviceId}
-            </option>
-          ))}
-        </select>
+        ))}
+        <div className="row" style={{ gap: 8 }}>
+          <button onClick={() => setCameraIds([...cameraIds, ""])}>+ 追加</button>
+          {needsCameraPermission && (
+            <>
+              <button onClick={requestCameraAccess}>カメラへのアクセスを許可</button>
+              <span style={{ fontSize: 12, opacity: 0.8 }}>許可後に一覧が表示されます</span>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="col" style={{ marginTop: 8 }}>

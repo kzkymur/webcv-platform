@@ -4,43 +4,48 @@ import type { FileEntry } from "./types";
 let SQLP: Promise<SqlJsStatic> | null = null;
 let db: Database | null = null;
 
-const IDB_NAME = "galvoweb-sqlite";
-const STORE = "dbfile";
-const KEY = "main";
+// OPFS storage (Origin Private File System)
+const OPFS_DIR = "galvoweb";
+const OPFS_FILE = "files.sqlite";
 
-async function openIDB(): Promise<IDBDatabase> {
-  return await new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+async function getOpfsRoot(): Promise<FileSystemDirectoryHandle> {
+  // `navigator.storage.getDirectory()` is the OPFS entry point
+  const root: FileSystemDirectoryHandle = await (navigator as any).storage.getDirectory();
+  return root;
 }
 
-async function loadFromIDB(): Promise<Uint8Array | null> {
-  const idb = await openIDB();
-  return await new Promise((resolve, reject) => {
-    const tx = idb.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).get(KEY);
-    req.onsuccess = () => {
-      const val = req.result as ArrayBuffer | undefined;
-      resolve(val ? new Uint8Array(val) : null);
-    };
-    req.onerror = () => reject(req.error);
-  });
+async function ensureDir(parent: FileSystemDirectoryHandle, name: string): Promise<FileSystemDirectoryHandle> {
+  // create = true makes it idempotent
+  // @ts-ignore – TS lib may lag behind spec
+  return await parent.getDirectoryHandle(name, { create: true });
 }
 
-async function saveToIDB(bytes: Uint8Array) {
-  const idb = await openIDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = idb.transaction(STORE, "readwrite");
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.objectStore(STORE).put(bytes, KEY);
-  });
+async function getDbFileHandle(create: boolean): Promise<FileSystemFileHandle | null> {
+  const root = await getOpfsRoot();
+  const dir = await ensureDir(root, OPFS_DIR);
+  try {
+    // @ts-ignore
+    return await dir.getFileHandle(OPFS_FILE, { create });
+  } catch (e: any) {
+    if (!create && (e?.name === "NotFoundError" || e?.code === 8)) return null;
+    throw e;
+  }
+}
+
+async function loadFromOPFS(): Promise<Uint8Array | null> {
+  const fh = await getDbFileHandle(false);
+  if (!fh) return null;
+  const file = await fh.getFile();
+  const buf = await file.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+async function saveToOPFS(bytes: Uint8Array) {
+  const fh = (await getDbFileHandle(true))!;
+  const w = await fh.createWritable();
+  // Cast to ArrayBuffer for stricter TS lib.dom types
+  await w.write(bytes.buffer as ArrayBuffer);
+  await w.close();
 }
 
 async function ensureDB(): Promise<Database> {
@@ -51,7 +56,7 @@ async function ensureDB(): Promise<Database> {
     });
   }
   const SQL = await SQLP;
-  const file = await loadFromIDB();
+  const file = await loadFromOPFS();
   db = file ? new SQL.Database(file) : new SQL.Database();
   // schema
   db.run(`CREATE TABLE IF NOT EXISTS files (
@@ -68,7 +73,7 @@ async function ensureDB(): Promise<Database> {
 async function persist() {
   if (!db) return;
   const bytes = db.export();
-  await saveToIDB(bytes);
+  await saveToOPFS(bytes);
 }
 
 export async function putFile(entry: FileEntry): Promise<void> {

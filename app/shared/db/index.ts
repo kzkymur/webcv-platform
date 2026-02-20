@@ -1,8 +1,5 @@
-// DB facade: uses SQLite Wasm when available and enabled, otherwise IndexedDB.
-import * as idb from "./indexeddb";
+// Single backend: SQLite WASM + OPFS persistence
 import type { FileEntry } from "./types";
-
-const useSQLiteFlag = typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_USE_SQLITE_WASM === "1";
 
 type Driver = {
   putFile: (e: FileEntry) => Promise<void>;
@@ -11,34 +8,25 @@ type Driver = {
   listFiles: () => Promise<FileEntry[]>;
 };
 
-let driver: Driver | null = null;
-
+let driverP: Promise<Driver> | null = null;
 async function ensureDriver(): Promise<Driver> {
-  if (!useSQLiteFlag) return idb as unknown as Driver;
-  if (driver) return driver;
-  try {
+  if (driverP) return driverP;
+  driverP = (async () => {
     const sqlite = await import("./sqlite-driver");
-    driver = sqlite as unknown as Driver;
-    return driver;
-  } catch (e) {
-    console.warn("SQLite Wasm unavailable, falling back to IndexedDB", e);
-    return (idb as unknown) as Driver;
-  }
+    return sqlite as unknown as Driver;
+  })();
+  return driverP;
 }
 
 export async function putFile(e: FileEntry) {
-  const d = await ensureDriver();
-  return d.putFile(e);
+  return (await ensureDriver()).putFile(e);
 }
 export async function getFile(p: string) {
-  const d = await ensureDriver();
-  return d.getFile(p);
+  return (await ensureDriver()).getFile(p);
 }
 export async function deleteFile(p: string) {
-  const d = await ensureDriver();
-  return d.deleteFile(p);
+  return (await ensureDriver()).deleteFile(p);
 }
 export async function listFiles() {
-  const d = await ensureDriver();
-  return d.listFiles();
+  return (await ensureDriver()).listFiles();
 }

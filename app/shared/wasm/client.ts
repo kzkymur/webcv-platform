@@ -38,6 +38,92 @@ export class WasmWorkerClient {
     return { found: res.found, points: new Float32Array(res.points) };
   }
 
+  async cvCalcInnerParams(width: number, height: number, pointsList: Float32Array[]) {
+    const res = await this.req<{ ok: boolean; okFlag?: boolean; intr?: ArrayBuffer; dist?: ArrayBuffer } | any>({
+      type: "cv/calcInnerParams",
+      width,
+      height,
+      pointsList: pointsList.map((p) => p.buffer),
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcInnerParams failed");
+    return { ok: !!res.okFlag, intr: new Float32Array(res.intr), dist: new Float32Array(res.dist) };
+  }
+
+  async cvCalcUndistMap(width: number, height: number, intr: Float32Array, dist: Float32Array) {
+    const res = await this.req<{ ok: boolean; mapX?: ArrayBuffer; mapY?: ArrayBuffer } | any>({
+      type: "cv/calcUndistMap",
+      width,
+      height,
+      intr: intr.buffer,
+      dist: dist.buffer,
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcUndistMap failed");
+    return { mapX: new Float32Array(res.mapX), mapY: new Float32Array(res.mapY) };
+  }
+
+  async cvCalcHomography(aPoints: Float32Array, bPoints: Float32Array) {
+    const res = await this.req<{ ok: boolean; H?: ArrayBuffer } | any>({
+      type: "cv/calcHomography",
+      aPoints: aPoints.buffer,
+      bPoints: bPoints.buffer,
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcHomography failed");
+    return { H: new Float32Array(res.H) };
+  }
+
+  async cvCalcInnerParamsExt(width: number, height: number, pointsList: Float32Array[]) {
+    const res = await this.req<{ ok: boolean; okFlag?: boolean; intr?: ArrayBuffer; dist?: ArrayBuffer; rvecs?: ArrayBuffer; tvecs?: ArrayBuffer } | any>({
+      type: "cv/calcInnerParamsExt",
+      width,
+      height,
+      pointsList: pointsList.map((p) => p.buffer),
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcInnerParamsExt failed");
+    return { ok: !!res.okFlag, intr: new Float32Array(res.intr), dist: new Float32Array(res.dist), rvecs: new Float32Array(res.rvecs), tvecs: new Float32Array(res.tvecs) };
+  }
+
+  async cvCalcInnerParamsFisheyeExt(width: number, height: number, pointsList: Float32Array[]) {
+    const res = await this.req<{ ok: boolean; okFlag?: boolean; intr?: ArrayBuffer; dist?: ArrayBuffer; rvecs?: ArrayBuffer; tvecs?: ArrayBuffer } | any>({
+      type: "cv/calcInnerParamsFisheyeExt",
+      width,
+      height,
+      pointsList: pointsList.map((p) => p.buffer),
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcInnerParamsFisheyeExt failed");
+    return { ok: !!res.okFlag, intr: new Float32Array(res.intr), dist: new Float32Array(res.dist), rvecs: new Float32Array(res.rvecs), tvecs: new Float32Array(res.tvecs) };
+  }
+
+  async cvCalcHomographyUndist(aPoints: Float32Array, bPoints: Float32Array, intrA: Float32Array, distA: Float32Array, intrB: Float32Array, distB: Float32Array) {
+    const res = await this.req<{ ok: boolean; H?: ArrayBuffer } | any>({
+      type: "cv/calcHomographyUndist",
+      aPoints: aPoints.buffer,
+      bPoints: bPoints.buffer,
+      intrA: intrA.buffer,
+      distA: distA.buffer,
+      intrB: intrB.buffer,
+      distB: distB.buffer,
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcHomographyUndist failed");
+    return { H: new Float32Array(res.H) };
+  }
+
+  async cvCalcInterRemapUndist(widthA: number, heightA: number, widthB: number, heightB: number, intrA: Float32Array, distA: Float32Array, intrB: Float32Array, distB: Float32Array, H: Float32Array) {
+    const res = await this.req<{ ok: boolean; mapX?: ArrayBuffer; mapY?: ArrayBuffer } | any>({
+      type: "cv/calcInterRemapUndist",
+      widthA,
+      heightA,
+      widthB,
+      heightB,
+      intrA: intrA.buffer,
+      distA: distA.buffer,
+      intrB: intrB.buffer,
+      distB: distB.buffer,
+      H: H.buffer,
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcInterRemapUndist failed");
+    return { mapX: new Float32Array(res.mapX), mapY: new Float32Array(res.mapY) };
+  }
+
   dispose() {
     try {
       this.worker.terminate();

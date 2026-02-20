@@ -5,14 +5,13 @@ import { useEffect, useRef } from "react";
 export default function CameraCanvas({
   stream,
   width = 640,
-  height = 360,
 }: {
   stream: MediaStream | null;
-  width?: number;
-  height?: number;
+  width?: number; // fixed width in CSS pixels; height adapts to aspect
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastSize = useRef<{ w: number; h: number }>({ w: width, h: Math.round((width * 9) / 16) });
 
   useEffect(() => {
     const v = videoRef.current;
@@ -32,32 +31,38 @@ export default function CameraCanvas({
 
     const draw = () => {
       if (v.readyState >= 2) {
-        // Fix aspect ratio by letterboxing/pillarboxing into the target canvas size
-        const vidW = v.videoWidth || width;
-        const vidH = v.videoHeight || height;
-        c.width = width;
-        c.height = height;
-        const scale = Math.min(width / vidW, height / vidH);
-        const drawW = Math.round(vidW * scale);
-        const drawH = Math.round(vidH * scale);
-        const dx = Math.floor((width - drawW) / 2);
-        const dy = Math.floor((height - drawH) / 2);
-        // Clear and fill background to visualize letterbox bars
-        ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(v, dx, dy, drawW, drawH);
+        const vidW = v.videoWidth || lastSize.current.w;
+        const vidH = v.videoHeight || lastSize.current.h;
+        const cssW = width;
+        const cssH = Math.max(1, Math.round((cssW * vidH) / (vidW || 1)));
+        // CSS sizing
+        c.style.width = `${cssW}px`;
+        c.style.height = "auto"; // auto height with aspect-ratio below
+        c.style.aspectRatio = `${vidW}/${vidH}`;
+        // Backing store sizing (for HiDPI crispness)
+        const dpr = (window.devicePixelRatio || 1);
+        const bufW = Math.max(1, Math.round(cssW * dpr));
+        const bufH = Math.max(1, Math.round(cssH * dpr));
+        if (c.width !== bufW || c.height !== bufH) {
+          c.width = bufW;
+          c.height = bufH;
+          lastSize.current = { w: cssW, h: cssH };
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.scale(dpr, dpr);
+        }
+        ctx.clearRect(0, 0, cssW, cssH);
+        ctx.drawImage(v, 0, 0, cssW, cssH);
       }
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [width, height, stream]);
+  }, [width, stream]);
 
   return (
     <div className="canvasWrap">
       <video ref={videoRef} style={{ display: "none" }} />
-      <canvas ref={canvasRef} width={width} height={height} />
+      <canvas ref={canvasRef} width={lastSize.current.w} height={lastSize.current.h} />
     </div>
   );
 }
