@@ -1,5 +1,10 @@
-- 0. ホームページ
-  - パス：/
-  - TypeScript Only
-  - 各ページへのリンクとその説明が貼られている
-  - ファイルシステムのアクセス（閲覧）が行える
+- 0. Home Page
+  - Path: /
+  - TypeScript only
+  - Shows an English "Feature Index" (not a workflow). Pages are independent features; the index briefly explains each and where its inputs/outputs reside:
+    - 1. Syncro Checkerboard Shots — capture frames from selected cameras; saves to `1-syncro-checkerboard_shots/<ts>_cam-<name>`.
+    - 2. Calibrate Scenes — detects corners, computes intrinsics/extrinsics, writes artifacts under `2-calibrate-scenes/` including `_intrinsics.json`, `_distCoeffs.json`, `_remapX/Y`, pairwise `_H_undist.json`, `_mappingX/Y`.
+    - 3. Remap Realtime — lists detected mapping pairs and previews the chosen mapping; live WebGL application is being integrated.
+  - Do not render a page-link banner above main content.
+  - Sidebar (persistent): Device Settings, File System (English labels).
+  - File preview: when a file is selected in the sidebar file system, render a 2D Canvas preview under the index.

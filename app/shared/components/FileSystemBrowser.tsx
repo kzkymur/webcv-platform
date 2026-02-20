@@ -78,7 +78,7 @@ export default function FileSystemBrowser({
       <div className="row" style={{ gap: 8 }}>
         <input
           type="text"
-          placeholder="フィルタ (パスに含まれる文字)"
+          placeholder="Filter (substring of path)"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           style={{ flex: 1, minWidth: 120 }}
@@ -96,10 +96,10 @@ export default function FileSystemBrowser({
             setOpen(s);
           }}
         >
-          全展開
+          Expand All
         </button>
-        <button onClick={() => setOpen(new Set())}>全折りたたみ</button>
-        <button onClick={refresh}>再読込</button>
+        <button onClick={() => setOpen(new Set())}>Collapse All</button>
+        <button onClick={refresh}>Reload</button>
       </div>
       <DirTree
         nodes={tree}
@@ -162,12 +162,12 @@ export default function FileSystemBrowser({
             await refresh();
             if (failed > 0) {
               // eslint-disable-next-line no-alert
-              alert(`${failed} 件の削除に失敗しました`);
+              alert(`Failed to delete ${failed} item(s)`);
             }
           }}
-          title={selected.size > 1 ? `${selected.size} 件を削除` : undefined}
+          title={selected.size > 1 ? `Delete ${selected.size} items` : undefined}
         >
-          削除{selected.size > 1 ? ` (${selected.size})` : ""}
+          Delete{selected.size > 1 ? ` (${selected.size})` : ""}
         </button>
       </div>
     </div>
@@ -289,7 +289,7 @@ function DirTree({
           </div>
         );
       })}
-      {rows.length === 0 && <div style={{ opacity: 0.7 }}>一致する項目がありません</div>}
+      {rows.length === 0 && <div style={{ opacity: 0.7 }}>No matches</div>}
     </div>
   );
 }

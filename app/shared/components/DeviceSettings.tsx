@@ -81,7 +81,7 @@ export default function DeviceSettings() {
   return (
     <div className="col">
       <div className="col">
-        <label>Web カメラ（複数選択可）</label>
+        <label>Web Cameras (multi-select)</label>
         {cameraIds.map((id, idx) => (
           <div className="row" key={idx} style={{ gap: 8, marginBottom: 6 }}>
             <span style={{ width: 24, textAlign: "right" }}>#{idx + 1}</span>
@@ -94,7 +94,7 @@ export default function DeviceSettings() {
               }}
               disabled={needsCameraPermission}
             >
-              <option value="">未選択</option>
+              <option value="">(unselected)</option>
               {devices.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label || d.deviceId}
@@ -117,22 +117,22 @@ export default function DeviceSettings() {
               />
               Y16
             </label>
-            <button onClick={() => setCameraIds(cameraIds.filter((_, i) => i !== idx))}>削除</button>
+            <button onClick={() => setCameraIds(cameraIds.filter((_, i) => i !== idx))}>Remove</button>
           </div>
         ))}
         <div className="row" style={{ gap: 8 }}>
-          <button onClick={() => setCameraIds([...cameraIds, ""])}>+ 追加</button>
+          <button onClick={() => setCameraIds([...cameraIds, ""])}>+ Add</button>
           {needsCameraPermission && (
             <>
-              <button onClick={requestCameraAccess}>カメラへのアクセスを許可</button>
-              <span style={{ fontSize: 12, opacity: 0.8 }}>許可後に一覧が表示されます</span>
+              <button onClick={requestCameraAccess}>Allow camera access</button>
+              <span style={{ fontSize: 12, opacity: 0.8 }}>Devices appear after permission is granted.</span>
             </>
           )}
         </div>
       </div>
 
       <div className="col" style={{ marginTop: 8 }}>
-        <label>マイコン (Web Serial)</label>
+        <label>Microcontroller (Web Serial)</label>
         {serialSupported ? (
           <div className="row">
             <button
@@ -142,17 +142,17 @@ export default function DeviceSettings() {
                 if (ok) setSerial(s);
               }}
             >
-              ポートを選択
+              Choose Port
             </button>
             <button onClick={() => serial?.disconnect()} disabled={!serial}>
-              切断
+              Disconnect
             </button>
           </div>
         ) : (
-          <div>ブラウザが Web Serial を未対応です (Chrome 推奨)</div>
+          <div>Web Serial not supported by this browser (Chrome recommended).</div>
         )}
         <div className="row" style={{ marginTop: 8 }}>
-          <label>レーザー出力 (%)</label>
+          <label>Laser Output (%)</label>
           <input
             type="number"
             min={0}
@@ -163,14 +163,14 @@ export default function DeviceSettings() {
           />
           <label className="row" style={{ gap: 6 }}>
             <input type="checkbox" checked={armed} onChange={(e) => setArmed(e.target.checked)} />
-            動作に同意 (安全に注意)
+            I acknowledge safe operation
           </label>
           <button
             disabled={!serial || !armed}
             onClick={() => serial?.setLaserOutput(laserPct)}
             title="Teensy firmware: Mode A sets PWM/DAC (0–100)"
           >
-            出力を送信
+            Send Output
           </button>
         </div>
       </div>

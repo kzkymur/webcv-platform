@@ -40,17 +40,17 @@ export default function GalvoPanel() {
   return (
     <div className="col" style={{ gap: 10 }}>
       <div className="row">
-        <button onClick={async () => { const s = new SerialCommunicator(); if (await s.connect()) setSerial(s); }}>ポート選択</button>
-        <button onClick={() => serial?.disconnect()} disabled={!serial}>切断</button>
+        <button onClick={async () => { const s = new SerialCommunicator(); if (await s.connect()) setSerial(s); }}>Choose Port</button>
+        <button onClick={() => serial?.disconnect()} disabled={!serial}>Disconnect</button>
       </div>
       <label className="row" style={{ gap: 6 }}>
         <input type="checkbox" checked={armed} onChange={(e) => setArmed(e.target.checked)} />
-        動作に同意（安全に注意）
+        I acknowledge safe operation
       </label>
       <div className="row">
-        <label>範囲</label>
+        <label>Range</label>
         <input type="number" value={min} onChange={(e) => setMin(Number(e.target.value))} style={{ width: 84 }} />
-        <span>〜</span>
+        <span>to</span>
         <input type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} style={{ width: 84 }} />
       </div>
       <div className="row">
@@ -58,21 +58,21 @@ export default function GalvoPanel() {
         <input type="number" value={x} onChange={(e) => setX(Number(e.target.value))} style={{ width: 120 }} />
         <label>Y</label>
         <input type="number" value={y} onChange={(e) => setY(Number(e.target.value))} style={{ width: 120 }} />
-        <button disabled={!serial || !armed} onClick={sendXY}>座標送信</button>
+        <button disabled={!serial || !armed} onClick={sendXY}>Send XY</button>
       </div>
       <div className="col">
-        <label>スケジューラ</label>
+        <label>Scheduler</label>
         <div className="row">
-          <input type="text" placeholder="例: 100,100 200,100 200,200 100,200" onBlur={(e) => {
+          <input type="text" placeholder="e.g., 100,100 200,100 200,200 100,200" onBlur={(e) => {
             const pts: [number, number][] = e.target.value.split(/\s+/).filter(Boolean).map(p => p.split(",")).map(([sx, sy]) => [Number(sx), Number(sy)] as [number, number]);
             setQueue(pts);
           }} style={{ flex: 1 }} />
         </div>
         <div className="row" style={{ marginTop: 6 }}>
-          <label>間隔(ms)</label>
+          <label>Interval (ms)</label>
           <input type="number" value={intervalMs} onChange={(e) => setIntervalMs(Number(e.target.value))} style={{ width: 100 }} />
-          <button disabled={!serial || !armed || queue.length === 0} onClick={startSchedule}>開始</button>
-          <button onClick={stopSchedule}>停止</button>
+          <button disabled={!serial || !armed || queue.length === 0} onClick={startSchedule}>Start</button>
+          <button onClick={stopSchedule}>Stop</button>
         </div>
       </div>
     </div>

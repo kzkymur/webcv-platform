@@ -2,58 +2,49 @@
 
 export const dynamic = "error";
 
-import DeviceSettings from "@/shared/components/DeviceSettings";
-import FileSystemBrowser from "@/shared/components/FileSystemBrowser";
-import CameraCanvas from "@/shared/components/CameraCanvas";
-import { useCameraIds, useCameraStream } from "@/shared/hooks/useCameraStreams";
+import Sidebar from "@/components/Sidebar";
 import { useState, useEffect } from "react";
 import { FileEntry } from "@/shared/db/types";
 
 export default function Page() {
   const [activeFile, setActiveFile] = useState<FileEntry | null>(null);
-  const [ids] = useCameraIds();
   return (
     <>
-      <aside className="sidebar">
-        <div className="panel">
-          <h3>デバイス設定</h3>
-          <DeviceSettings />
-        </div>
-        <div className="panel">
-          <h3>ファイルシステム</h3>
-          <FileSystemBrowser onSelect={setActiveFile} />
-        </div>
-      </aside>
-      <header className="header">
-        <div className="col" style={{ gap: 6 }}>
-          <b>webcv-platform</b>
-          <div className="row" style={{ gap: 10, fontSize: 13 }}>
-            <a href="/1-syncro-checkerboard-shots">1. 撮影</a>
-            <span>→</span>
-            <a href="/2-calibrate-scenes">2. キャリブレーション</a>
-            <span>→</span>
-            <a href="/3-remap-realtime">3. リアルタイム表示</a>
-          </div>
-        </div>
-      </header>
+      <Sidebar onSelectFile={setActiveFile} />
       <main className="main">
         <div className="col" style={{ gap: 16 }}>
-          <section>
-            <h4>選択中の Web カメラ</h4>
-            <div className="col" style={{ gap: 12 }}>
-              {ids.length === 0 && (
-                <div style={{ opacity: 0.7 }}>
-                  カメラが未選択です。左の「デバイス設定」から追加してください。
+          <section className="col" style={{ gap: 8 }}>
+            <h3>Feature Index</h3>
+            <div className="panel">
+              <div className="col" style={{ gap: 6 }}>
+                <a href="/1-syncro-checkerboard-shots"><b>1. Syncro Checkerboard Shots</b></a>
+                <div style={{ opacity: 0.85, fontSize: 14 }}>
+                  Capture checkerboard or scene frames from selected cameras in sync. Each trigger saves RGBA images into the built‑in database (OPFS via SQLite Wasm) under
+                  <code> 1-syncro-checkerboard_shots/&lt;timestamp&gt;_cam-&lt;name&gt;</code>. Stand‑alone tool commonly used to gather calibration inputs.
                 </div>
-              )}
-              {ids.map((id, idx) => (
-                <CameraPanel key={id || idx} deviceId={id} />
-              ))}
+              </div>
+            </div>
+            <div className="panel">
+              <div className="col" style={{ gap: 6 }}>
+                <a href="/2-calibrate-scenes"><b>2. Calibrate Scenes</b></a>
+                <div style={{ opacity: 0.85, fontSize: 14 }}>
+                  Detect chessboard corners and compute per‑camera intrinsics/extrinsics (OpenCV via WebAssembly). Generates undistortion maps and optional inter‑camera mappings (undistorted domain).
+                  Outputs are stored under <code>2-calibrate-scenes/</code> such as <code>_intrinsics.json</code>, <code>_distCoeffs.json</code>, <code>_remapX/Y</code>, and per‑pair <code>_H_undist.json</code>, <code>_mappingX/Y</code>.
+                </div>
+              </div>
+            </div>
+            <div className="panel">
+              <div className="col" style={{ gap: 6 }}>
+                <a href="/3-remap-realtime"><b>3. Remap Realtime</b></a>
+                <div style={{ opacity: 0.85, fontSize: 14 }}>
+                  Preview and apply generated remap fields in real time (WebGL). Select a mapping pair to inspect; live application is being integrated next.
+                </div>
+              </div>
             </div>
           </section>
           {activeFile && (
             <section>
-              <h4>選択中のファイル: {activeFile.path}</h4>
+              <h4>Selected File: {activeFile.path}</h4>
               <FilePreview file={activeFile} />
             </section>
           )}
@@ -61,11 +52,6 @@ export default function Page() {
       </main>
     </>
   );
-}
-
-function CameraPanel({ deviceId }: { deviceId?: string }) {
-  const stream = useCameraStream(deviceId);
-  return <CameraCanvas stream={stream} width={640} />;
 }
 
 function FilePreview({ file }: { file: FileEntry }) {

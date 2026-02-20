@@ -3,12 +3,11 @@
 export const dynamic = "error";
 
 import { useEffect, useRef, useState, useMemo } from "react";
-import DeviceSettings from "@/shared/components/DeviceSettings";
+import Sidebar from "@/components/Sidebar";
 import { useCameraIds, useCameraStream } from "@/shared/hooks/useCameraStreams";
 import { putFile } from "@/shared/db";
 import type { FileEntry } from "@/shared/db/types";
 import { readNamespacedStore, updateNamespacedStore } from "@/shared/module/loaclStorage";
-import FileSystemBrowser from "@/shared/components/FileSystemBrowser";
 
 type CaptureFormat = "rgba8" | "gray8"; // gray16 can be added when available
 
@@ -73,22 +72,13 @@ export default function Page() {
 
   return (
     <>
-      <aside className="sidebar">
-        <div className="panel">
-          <h3>デバイス設定</h3>
-          <DeviceSettings />
-        </div>
-        <div className="panel">
-          <h3>ファイルシステム</h3>
-          <FileSystemBrowser onSelect={() => { /* page 1: no preview; selection may drive future actions */ }} />
-        </div>
-      </aside>
+      <Sidebar onSelectFile={() => { /* page 1: no file preview */ }} />
       <header className="header">
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <b>1. 同期チェッカーボード撮影</b>
+          <b>1. Syncro Checkerboard Shots</b>
           <div className="row" style={{ gap: 12 }}>
             <button onClick={shootAll} disabled={busy || ids.length === 0}>
-              同時撮影 ({ids.length} 台)
+              Capture All ({ids.length})
             </button>
           </div>
         </div>
@@ -96,9 +86,9 @@ export default function Page() {
       <main className="main">
         <div className="col" style={{ gap: 16 }}>
           <section className="col" style={{ gap: 12 }}>
-            <h4>選択中のカメラ</h4>
+            <h4>Selected Cameras</h4>
             {ids.length === 0 && (
-              <div style={{ opacity: 0.7 }}>左の「デバイス設定」でカメラを追加してください。</div>
+              <div style={{ opacity: 0.7 }}>No cameras selected. Add from Device Settings in the sidebar.</div>
             )}
             {ids.map((id, idx) => (
               <CameraPreview
@@ -254,9 +244,9 @@ function CameraPreview({
   return (
     <div className="col" style={{ gap: 6 }}>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 12, opacity: 0.8 }}>{label || deviceId || "(未選択)"}</div>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>{label || deviceId || "(unselected)"}</div>
         <label className="row" style={{ gap: 6 }}>
-          保存形式
+          Save Format
           <select value={format} onChange={(e) => onChangeFormat(e.target.value as CaptureFormat)} disabled={!deviceId}>
             <option value="rgba8">RGBA 8-bit</option>
             <option value="gray8">Grayscale 8-bit</option>

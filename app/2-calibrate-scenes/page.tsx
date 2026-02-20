@@ -3,8 +3,7 @@
 export const dynamic = "error";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import DeviceSettings from "@/shared/components/DeviceSettings";
-import FileSystemBrowser from "@/shared/components/FileSystemBrowser";
+import Sidebar from "@/components/Sidebar";
 import { getFile, listFiles, putFile } from "@/shared/db";
 import type { FileEntry } from "@/shared/db/types";
 import { WasmWorkerClient } from "@/shared/wasm/client";
@@ -22,7 +21,6 @@ type ShotRow = {
 };
 
 export default function Page() {
-  const [activeFile, setActiveFile] = useState<FileEntry | null>(null);
   const [rows, setRows] = useState<ShotRow[]>([]);
   const [camNames, setCamNames] = useState<string[]>([]);
   const [camA, setCamA] = useState<string>("");
@@ -85,7 +83,7 @@ export default function Page() {
     setBusy(true);
     setLog("");
     const pick = usableRows.filter((r) => selectedTs.has(r.ts));
-    appendLog(`対象ペア: ${pick.length} 組 (${camA} ↔ ${camB})`);
+    appendLog(`Target pairs: ${pick.length} (${camA} ↔ ${camB})`);
     if (pick.length === 0) return setBusy(false);
 
     // 1) Detect corners for each selected frame per camera
@@ -100,12 +98,12 @@ export default function Page() {
         const { rgba, width, height } = fileToRGBA(fe);
         const res = await wrk.cvFindChessboardCorners(rgba, width, height);
         if (!res.found) {
-          appendLog(`× コーナー検出失敗: ${r.ts} cam=${cam}`);
+          appendLog(`× Corner detection failed: ${r.ts} cam=${cam}`);
           continue;
         }
         const det: Det = { ts: r.ts, cam, path, width, height, points: res.points };
         if (cam === camA) detA.push(det); else detB.push(det);
-        appendLog(`✓ コーナー検出: ${r.ts} cam=${cam} (${width}x${height})`);
+        appendLog(`✓ Corners detected: ${r.ts} cam=${cam} (${width}x${height})`);
       }
     }
 
@@ -119,11 +117,11 @@ export default function Page() {
         if (modelA === "fisheye") {
           const { ok, intr, dist, rvecs, tvecs } = await wrk.cvCalcInnerParamsFisheyeExt(width, height, detA.map((d) => d.points));
           intrA = intr; distA = dist; rA = rvecs; tA = tvecs;
-          appendLog(`✓ 内部・外部パラメータ(${camA}, fisheye) 計算${ok ? "" : " (警告: ok=false)"}`);
+          appendLog(`✓ Intrinsics/Extrinsics computed (${camA}, fisheye)${ok ? "" : " (warning: ok=false)"}`);
         } else {
           const { ok, intr, dist, rvecs, tvecs } = await wrk.cvCalcInnerParamsExt(width, height, detA.map((d) => d.points));
           intrA = intr; distA = dist; rA = rvecs; tA = tvecs;
-          appendLog(`✓ 内部・外部パラメータ(${camA}) 計算${ok ? "" : " (警告: ok=false)"}`);
+          appendLog(`✓ Intrinsics/Extrinsics computed (${camA})${ok ? "" : " (warning: ok=false)"}`);
         }
         await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_intrinsics.json`, { width, height, intrinsics3x3: Array.from(intrA!) }));
         await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_distCoeffs.json`, { distCoeffs: Array.from(distA!) }));
@@ -133,7 +131,7 @@ export default function Page() {
         }
       }
     } catch (e: any) {
-      appendLog(`! 内部パラメータ(${camA}) 計算失敗: ${String(e)}`);
+      appendLog(`! Intrinsics (${camA}) failed: ${String(e)}`);
     }
     try {
       if (detB.length > 0) {
@@ -141,11 +139,11 @@ export default function Page() {
         if (modelB === "fisheye") {
           const { ok, intr, dist, rvecs, tvecs } = await wrk.cvCalcInnerParamsFisheyeExt(width, height, detB.map((d) => d.points));
           intrB = intr; distB = dist; rB = rvecs; tB = tvecs;
-          appendLog(`✓ 内部・外部パラメータ(${camB}, fisheye) 計算${ok ? "" : " (警告: ok=false)"}`);
+          appendLog(`✓ Intrinsics/Extrinsics computed (${camB}, fisheye)${ok ? "" : " (warning: ok=false)"}`);
         } else {
           const { ok, intr, dist, rvecs, tvecs } = await wrk.cvCalcInnerParamsExt(width, height, detB.map((d) => d.points));
           intrB = intr; distB = dist; rB = rvecs; tB = tvecs;
-          appendLog(`✓ 内部・外部パラメータ(${camB}) 計算${ok ? "" : " (警告: ok=false)"}`);
+          appendLog(`✓ Intrinsics/Extrinsics computed (${camB})${ok ? "" : " (warning: ok=false)"}`);
         }
         await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_intrinsics.json`, { width, height, intrinsics3x3: Array.from(intrB!) }));
         await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_distCoeffs.json`, { distCoeffs: Array.from(distB!) }));
@@ -155,7 +153,7 @@ export default function Page() {
         }
       }
     } catch (e: any) {
-      appendLog(`! 内部パラメータ(${camB}) 計算失敗: ${String(e)}`);
+      appendLog(`! Intrinsics (${camB}) failed: ${String(e)}`);
     }
 
     // 3) Undistort maps (if intrinsics available)
@@ -165,10 +163,10 @@ export default function Page() {
         const { mapX, mapY } = await wrk.cvCalcUndistMap(width, height, intrA, distA);
         await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_remapX`, mapX, width, height));
         await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_remapY`, mapY, width, height));
-        appendLog(`✓ 歪み補正マップ(${camA}) 保存`);
+        appendLog(`✓ Undistortion map (${camA}) saved`);
       }
     } catch (e: any) {
-      appendLog(`! 歪み補正マップ(${camA}) 失敗: ${String(e)}`);
+      appendLog(`! Undistortion map (${camA}) failed: ${String(e)}`);
     }
     try {
       if (intrB && distB && detB.length > 0) {
@@ -176,10 +174,10 @@ export default function Page() {
         const { mapX, mapY } = await wrk.cvCalcUndistMap(width, height, intrB, distB);
         await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_remapX`, mapX, width, height));
         await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_remapY`, mapY, width, height));
-        appendLog(`✓ 歪み補正マップ(${camB}) 保存`);
+        appendLog(`✓ Undistortion map (${camB}) saved`);
       }
     } catch (e: any) {
-      appendLog(`! 歪み補正マップ(${camB}) 失敗: ${String(e)}`);
+      appendLog(`! Undistortion map (${camB}) failed: ${String(e)}`);
     }
 
     // 4) Inter-camera mapping (undist domain remap)
@@ -196,28 +194,19 @@ export default function Page() {
         await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_to_cam-${sanitize(camB)}_${a.ts}_mappingY`, mapY, a.width, a.height));
         saved++;
       } catch (e: any) {
-        appendLog(`! Homography 保存失敗: ${a.ts} (${String(e)})`);
+        appendLog(`! Homography save failed: ${a.ts} (${String(e)})`);
       }
     }
-    appendLog(`✓ カメラ間マッピング保存 (undist domain): ${saved}/${pick.length} 件`);
+    appendLog(`✓ Inter-camera mapping saved (undist domain): ${saved}/${pick.length}`);
     setBusy(false);
   }
 
   return (
     <>
-      <aside className="sidebar">
-        <div className="panel">
-          <h3>デバイス設定</h3>
-          <DeviceSettings />
-        </div>
-        <div className="panel">
-          <h3>ファイルシステム</h3>
-          <FileSystemBrowser onSelect={setActiveFile} />
-        </div>
-      </aside>
+      <Sidebar />
       <header className="header">
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <b>2. カメラ群の位置合わせ</b>
+          <b>2. Calibrate Scenes</b>
           <div className="row" style={{ gap: 12 }}>
             <label className="row" style={{ gap: 6 }}>
               Camera A
@@ -250,7 +239,7 @@ export default function Page() {
               </select>
             </label>
             <button onClick={runCalibration} disabled={busy || !camA || !camB || selectedTs.size === 0}>
-              実行 ({selectedTs.size} 組)
+              Run ({selectedTs.size} pairs)
             </button>
           </div>
         </div>
@@ -258,14 +247,14 @@ export default function Page() {
       <main className="main">
         <div className="col" style={{ gap: 16 }}>
           <section className="col" style={{ gap: 8 }}>
-            <h4>対象フレームの選択 (1-syncro-checkerboard_shots)</h4>
+            <h4>Select Frames (from 1-syncro-checkerboard_shots)</h4>
             <div className="row" style={{ gap: 8, alignItems: "center" }}>
-              <span style={{ opacity: 0.8 }}>検出対象</span>
+              <span style={{ opacity: 0.8 }}>Targets</span>
               <span style={{ fontFamily: "monospace" }}>{camA}</span>
               <span>×</span>
               <span style={{ fontFamily: "monospace" }}>{camB}</span>
-              <button onClick={() => setSelectedTs(new Set(usableRows.map((r) => r.ts)))} disabled={usableRows.length === 0}>全選択</button>
-              <button onClick={() => setSelectedTs(new Set())} disabled={selectedTs.size === 0}>全解除</button>
+              <button onClick={() => setSelectedTs(new Set(usableRows.map((r) => r.ts)))} disabled={usableRows.length === 0}>Select All</button>
+              <button onClick={() => setSelectedTs(new Set())} disabled={selectedTs.size === 0}>Clear All</button>
             </div>
             <div className="tree" style={{ maxHeight: 240, overflow: "auto" }}>
               {usableRows.map((r) => (
@@ -286,19 +275,14 @@ export default function Page() {
                   <span className="file" title={r.cams[camB]} style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shorten(r.cams[camB])}</span>
                 </label>
               ))}
-              {usableRows.length === 0 && <div style={{ opacity: 0.7 }}>選択可能なフレームが見つかりません</div>}
+              {usableRows.length === 0 && <div style={{ opacity: 0.7 }}>No selectable frames found</div>}
             </div>
           </section>
           <section className="col" style={{ gap: 8 }}>
-            <h4>ログ</h4>
+            <h4>Log</h4>
             <pre style={{ minHeight: 120, maxHeight: 240, overflow: "auto", background: "#111", padding: 8, borderRadius: 4 }}>{log}</pre>
           </section>
-          {activeFile && (
-            <section>
-              <h4>選択中のファイル: {activeFile.path}</h4>
-              <FilePreview file={activeFile} />
-            </section>
-          )}
+          {/* No file preview on this page (Home only) */}
         </div>
       </main>
     </>
@@ -352,45 +336,4 @@ function remapFile(path: string, arr: Float32Array, width: number, height: numbe
   return { path, type: "remap", data: arr.buffer as ArrayBuffer, width, height, channels: 1 };
 }
 
-function FilePreview({ file }: { file: FileEntry }) {
-  const [imgData, setImgData] = useState<ImageData | null>(null);
-  useEffect(() => {
-    if (!file) return;
-    if (file.type === "rgb-image" || file.type === "grayscale-image") {
-      const w = file.width ?? 0;
-      const h = file.height ?? 0;
-      const u8 = new Uint8ClampedArray(file.data);
-      let rgba: Uint8ClampedArray;
-      if (file.type === "grayscale-image") {
-        if (file.channels === 4) rgba = u8; else {
-          const out = new Uint8ClampedArray(w * h * 4);
-          for (let i = 0; i < w * h; i++) {
-            const v = u8[i];
-            out[i * 4 + 0] = out[i * 4 + 1] = out[i * 4 + 2] = v;
-            out[i * 4 + 3] = 255;
-          }
-          rgba = out;
-        }
-      } else {
-        rgba = u8;
-      }
-      setImgData(new ImageData(new Uint8ClampedArray(rgba), w, h));
-    } else {
-      setImgData(null);
-    }
-  }, [file]);
-  if (!imgData) return null;
-  return (
-    <canvas
-      className="canvasWrap"
-      width={imgData.width}
-      height={imgData.height}
-      ref={(c) => {
-        if (!c) return;
-        const ctx = c.getContext("2d");
-        if (!ctx) return;
-        ctx.putImageData(imgData, 0, 0);
-      }}
-    />
-  );
-}
+// No FilePreview on this page (Home only)

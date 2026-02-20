@@ -2,11 +2,9 @@
 
 export const dynamic = "error";
 
-import DeviceSettings from "@/shared/components/DeviceSettings";
-import FileSystemBrowser from "@/shared/components/FileSystemBrowser";
+import Sidebar from "@/components/Sidebar";
 import { useEffect, useMemo, useState } from "react";
-import type { FileEntry } from "@/shared/db/types";
-import { listFiles, getFile } from "@/shared/db";
+import { listFiles } from "@/shared/db";
 
 type Pair = {
   ts: string; // capture timestamp (from 1-syncro)
@@ -18,7 +16,6 @@ type Pair = {
 };
 
 export default function Page() {
-  const [activeFile, setActiveFile] = useState<FileEntry | null>(null);
   const [pairs, setPairs] = useState<Pair[]>([]);
   const [sel, setSel] = useState<number>(-1);
 
@@ -51,25 +48,16 @@ export default function Page() {
 
   return (
     <>
-      <aside className="sidebar">
-        <div className="panel">
-          <h3>デバイス設定</h3>
-          <DeviceSettings />
-        </div>
-        <div className="panel">
-          <h3>ファイルシステム</h3>
-          <FileSystemBrowser onSelect={setActiveFile} />
-        </div>
-      </aside>
+      <Sidebar />
       <header className="header">
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <b>3. リアルタイム Remap (プレビュー導線)</b>
+          <b>3. Remap Realtime (Preview)</b>
         </div>
       </header>
       <main className="main">
         <div className="col" style={{ gap: 16 }}>
           <section className="col" style={{ gap: 8 }}>
-            <h4>検出されたマッピング（undist domain）</h4>
+            <h4>Detected Mappings (undistorted domain)</h4>
             <div className="tree" style={{ maxHeight: 220, overflow: "auto" }}>
               {pairs.map((p, i) => (
                 <div key={`${p.runTs}|${p.A}|${p.B}|${p.ts}`} className={`file ${i === sel ? "active" : ""}`} style={{ display: "flex", gap: 8, alignItems: "center" }} onClick={() => setSel(i)}>
@@ -78,7 +66,7 @@ export default function Page() {
                   <span style={{ opacity: 0.7 }}>(ts: {p.ts})</span>
                 </div>
               ))}
-              {pairs.length === 0 && <div style={{ opacity: 0.7 }}>マッピングが見つかりません。/2 で生成してください。</div>}
+              {pairs.length === 0 && <div style={{ opacity: 0.7 }}>No mappings found. Generate them in /2.</div>}
             </div>
             {selected && (
               <div style={{ opacity: 0.8, fontSize: 13 }}>
@@ -88,43 +76,16 @@ export default function Page() {
             )}
           </section>
           <section className="col" style={{ gap: 8 }}>
-            <h4>プレビューについて</h4>
+            <h4>About the Preview</h4>
             <div style={{ opacity: 0.8, fontSize: 13 }}>
-              このページは導線のみ先行実装です。undist用の `cam-*_remapX/Y` と合わせて、WebGLでのリアルタイム適用を次段で実装します。
-              当面は /2 のログとファイルを確認してから、ここで対象を選んでください。
+              This page is a preview stub. Alongside undistortion fields (`cam-*_remapX/Y`), real‑time WebGL application is being integrated next.
+              For now, inspect logs and files from /2 and select a target here.
             </div>
           </section>
-          {activeFile && (
-            <section>
-              <h4>選択中のファイル: {activeFile.path}</h4>
-              <BinaryPreview file={activeFile} />
-            </section>
-          )}
+          {/* No file preview on this page (Home only) */}
         </div>
       </main>
     </>
   );
 }
-
-function BinaryPreview({ file }: { file: FileEntry }) {
-  const [text, setText] = useState<string>("");
-  useEffect(() => {
-    (async () => {
-      if (!file) return setText("");
-      if (file.type === "remap") {
-        setText(`Float32[${file.width}x${file.height}] len=${(file.data.byteLength/4)|0}`);
-      } else if (file.type === "other") {
-        try {
-          const s = new TextDecoder().decode(new Uint8Array(file.data));
-          setText(s.slice(0, 2000));
-        } catch {
-          setText(`binary len=${file.data.byteLength}`);
-        }
-      } else {
-        setText(`type=${file.type} (画像は左のViewerで)`);
-      }
-    })();
-  }, [file]);
-  return <pre className="tree" style={{ padding: 8, background: "#111", maxHeight: 240, overflow: "auto" }}>{text}</pre>;
-}
-
+// No file preview panel here; Home only.
