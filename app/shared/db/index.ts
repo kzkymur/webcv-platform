@@ -5,6 +5,7 @@ type Driver = {
   putFile: (e: FileEntry) => Promise<void>;
   getFile: (p: string) => Promise<FileEntry | undefined>;
   deleteFile: (p: string) => Promise<void>;
+  deleteMany?: (paths: string[]) => Promise<number>;
   listFiles: () => Promise<FileEntry[]>;
 };
 
@@ -26,6 +27,17 @@ export async function getFile(p: string) {
 }
 export async function deleteFile(p: string) {
   return (await ensureDriver()).deleteFile(p);
+}
+export async function deleteMany(paths: string[]) {
+  const d = await ensureDriver();
+  if (typeof d.deleteMany === "function") return d.deleteMany(paths);
+  // Fallback: sequential deletes
+  let n = 0;
+  for (const p of paths) {
+    await d.deleteFile(p);
+    n++;
+  }
+  return n;
 }
 export async function listFiles() {
   return (await ensureDriver()).listFiles();

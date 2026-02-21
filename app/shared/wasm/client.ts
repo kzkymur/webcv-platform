@@ -4,8 +4,8 @@ export class WasmWorkerClient {
   private pending = new Map<number, (v: any) => void>();
 
   constructor() {
-    // Use classic worker that loads Emscripten glue via importScripts
-    this.worker = new Worker(new URL("./worker.classic.ts", import.meta.url));
+    // Use module worker so the bundled glue can use import.meta
+    this.worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     this.worker.onmessage = (ev) => {
       const { id } = ev.data || {};
       const cb = this.pending.get(id);

@@ -4,6 +4,21 @@ import type { FileEntry } from "./types";
 let SQLP: Promise<SqlJsStatic> | null = null;
 let db: Database | null = null;
 
+// Simple change notification (same-tab + cross-tab)
+type FileChangeOp = "put" | "delete" | "batch";
+const bc: BroadcastChannel | null =
+  typeof window !== "undefined" && (window as any).BroadcastChannel
+    ? new BroadcastChannel("gw-files")
+    : null;
+function notify(op: FileChangeOp, paths: string[]) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("gw:files:update", { detail: { op, paths } })
+    );
+  }
+  bc?.postMessage({ op, paths });
+}
+
 // OPFS storage (Origin Private File System)
 const OPFS_DIR = "galvoweb";
 const OPFS_FILE = "files.sqlite";
@@ -42,10 +57,15 @@ async function loadFromOPFS(): Promise<Uint8Array | null> {
 
 async function saveToOPFS(bytes: Uint8Array) {
   const fh = (await getDbFileHandle(true))!;
-  const w = await fh.createWritable();
-  // Cast to ArrayBuffer for stricter TS lib.dom types
-  await w.write(bytes.buffer as ArrayBuffer);
-  await w.close();
+  // @ts-ignore: older TS lib.dom types might not include options
+  const w: FileSystemWritableFileStream = await fh.createWritable({ keepExistingData: false });
+  try {
+    await w.seek(0);
+    await w.write(new Blob([bytes]));
+    await w.truncate(bytes.length);
+  } finally {
+    await w.close();
+  }
 }
 
 async function ensureDB(): Promise<Database> {
@@ -70,10 +90,19 @@ async function ensureDB(): Promise<Database> {
   return db;
 }
 
-async function persist() {
-  if (!db) return;
-  const bytes = db.export();
-  await saveToOPFS(bytes);
+// Serialize persistence to OPFS to avoid concurrent write races
+let persistChain: Promise<void> = Promise.resolve();
+function persist(): Promise<void> {
+  if (!db) return Promise.resolve();
+  persistChain = persistChain.then(async () => {
+    const bytes = db!.export();
+    await saveToOPFS(bytes);
+  }).catch((e) => {
+    // Reset the chain on failure so subsequent writes are not blocked
+    persistChain = Promise.resolve();
+    throw e;
+  });
+  return persistChain;
 }
 
 export async function putFile(entry: FileEntry): Promise<void> {
@@ -99,6 +128,35 @@ export async function putFile(entry: FileEntry): Promise<void> {
     stmt.free();
   }
   await persist();
+  notify("put", [entry.path]);
+}
+
+export async function deleteMany(paths: string[]): Promise<number> {
+  if (paths.length === 0) return 0;
+  const d = await ensureDB();
+  d.run("BEGIN TRANSACTION");
+  let affected = 0;
+  try {
+    const stmt = d.prepare(`DELETE FROM files WHERE path = ?`);
+    try {
+      for (const p of paths) {
+        stmt.run([p]);
+        // Count changes after each run
+        // @ts-ignore sql.js exposes getRowsModified
+        const c = typeof d.getRowsModified === "function" ? d.getRowsModified() : 1;
+        affected += c;
+      }
+    } finally {
+      stmt.free();
+    }
+    d.run("COMMIT");
+  } catch (e) {
+    try { d.run("ROLLBACK"); } catch {}
+    throw e;
+  }
+  await persist();
+  notify("batch", paths);
+  return affected;
 }
 
 export async function getFile(path: string): Promise<FileEntry | undefined> {
@@ -127,8 +185,14 @@ export async function getFile(path: string): Promise<FileEntry | undefined> {
 
 export async function deleteFile(path: string): Promise<void> {
   const d = await ensureDB();
-  d.run(`DELETE FROM files WHERE path = ?`, [path]);
+  const stmt = d.prepare(`DELETE FROM files WHERE path = ?`);
+  try {
+    stmt.run([path]);
+  } finally {
+    stmt.free();
+  }
   await persist();
+  notify("delete", [path]);
 }
 
 export async function listFiles(): Promise<FileEntry[]> {

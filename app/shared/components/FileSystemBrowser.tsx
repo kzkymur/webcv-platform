@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
-import { deleteFile, getFile, listFiles } from "@/shared/db";
+import { deleteFile, deleteMany, getFile, listFiles } from "@/shared/db";
 import { FileEntry } from "@/shared/db/types";
 import { buildTree, TreeNode } from "@/shared/util/tree";
 
@@ -17,6 +17,7 @@ export default function FileSystemBrowser({
   const [anchor, setAnchor] = useState<string | null>(null); // last clicked file path (for shift)
   // viewer only; no import UI
   const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
   const tree = useMemo(() => buildTree(files.map((f) => f.path)), [files]);
   const flat = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -65,6 +66,15 @@ export default function FileSystemBrowser({
   const refresh = async () => setFiles(await listFiles());
   useEffect(() => {
     refresh();
+    // Live updates from DB driver (same-tab + cross-tab)
+    const onUpdate = () => { void refresh(); };
+    window.addEventListener("gw:files:update", onUpdate as EventListener);
+    const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("gw-files") : null;
+    bc?.addEventListener("message", onUpdate as any);
+    return () => {
+      window.removeEventListener("gw:files:update", onUpdate as EventListener);
+      bc?.close();
+    };
   }, []);
 
   useEffect(() => {
@@ -151,23 +161,42 @@ export default function FileSystemBrowser({
       />
       <div className="row">
         <button
-          disabled={selected.size === 0 && !active}
+          disabled={busy || (selected.size === 0 && !active)}
           onClick={async () => {
-            const paths = selected.size > 0 ? Array.from(selected) : active ? [active] : [];
-            const results = await Promise.allSettled(paths.map((p) => deleteFile(p)));
-            const failed = results.filter((r) => r.status === "rejected").length;
-            setSelected(new Set());
-            setActive(null);
-            setAnchor(null);
-            await refresh();
-            if (failed > 0) {
-              // eslint-disable-next-line no-alert
-              alert(`Failed to delete ${failed} item(s)`);
+            if (busy) return;
+            setBusy(true);
+            try {
+              const paths = selected.size > 0 ? Array.from(selected) : active ? [active] : [];
+              // Optimistic UI: remove immediately
+              if (paths.length > 0) {
+                setFiles((prev) => prev.filter((f) => !paths.includes(f.path)));
+              }
+              let failed = 0;
+              try {
+                if (paths.length > 1 && typeof deleteMany === "function") {
+                  const n = await deleteMany(paths);
+                  failed = paths.length - n;
+                } else if (paths.length === 1) {
+                  await deleteFile(paths[0]);
+                }
+              } catch (e) {
+                failed = paths.length;
+              }
+              setSelected(new Set());
+              setActive(null);
+              setAnchor(null);
+              await refresh();
+              if (failed > 0) {
+                // eslint-disable-next-line no-alert
+                alert(`Failed to delete ${failed} item(s)`);
+              }
+            } finally {
+              setBusy(false);
             }
           }}
           title={selected.size > 1 ? `Delete ${selected.size} items` : undefined}
         >
-          Delete{selected.size > 1 ? ` (${selected.size})` : ""}
+          {busy ? "Deleting…" : `Delete${selected.size > 1 ? ` (${selected.size})` : ""}`}
         </button>
       </div>
     </div>

@@ -4,16 +4,20 @@ export const dynamic = "error";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import { getFile, listFiles, putFile } from "@/shared/db";
-import type { FileEntry } from "@/shared/db/types";
+import { listFiles } from "@/shared/db";
 import { WasmWorkerClient } from "@/shared/wasm/client";
+import { formatTimestamp } from "@/shared/util/time";
+import { sanitize, shorten } from "@/shared/util/strings";
+import { parseShotKey } from "@/shared/util/shots";
+import {
+  type CameraModel,
+  detectCornersForRows,
+  computeAndSaveIntrinsics,
+  saveUndistortionMaps,
+  computeAndSaveInterMapping,
+} from "@/shared/calibration/pipeline";
 
-type CameraModel = "normal" | "fisheye"; // fisheye reserved for future (C++ uses normal model now)
-
-type ShotKey = {
-  ts: string; // e.g., 2026-02-20_12-34-56.123
-  cam: string; // sanitized camera name
-};
+// moved: ShotKey type → @/shared/util/shots
 
 type ShotRow = {
   ts: string;
@@ -85,119 +89,34 @@ export default function Page() {
     const pick = usableRows.filter((r) => selectedTs.has(r.ts));
     appendLog(`Target pairs: ${pick.length} (${camA} ↔ ${camB})`);
     if (pick.length === 0) return setBusy(false);
+    // 1) Detect corners
+    const { detA, detB } = await detectCornersForRows(wrk, camA, camB, pick, appendLog);
 
-    // 1) Detect corners for each selected frame per camera
-    type Det = { ts: string; cam: string; path: string; width: number; height: number; points: Float32Array };
-    const detA: Det[] = [];
-    const detB: Det[] = [];
-    for (const r of pick) {
-      for (const cam of [camA, camB]) {
-        const path = r.cams[cam]!;
-        const fe = await getFile(path);
-        if (!fe) continue;
-        const { rgba, width, height } = fileToRGBA(fe);
-        const res = await wrk.cvFindChessboardCorners(rgba, width, height);
-        if (!res.found) {
-          appendLog(`× Corner detection failed: ${r.ts} cam=${cam}`);
-          continue;
-        }
-        const det: Det = { ts: r.ts, cam, path, width, height, points: res.points };
-        if (cam === camA) detA.push(det); else detB.push(det);
-        appendLog(`✓ Corners detected: ${r.ts} cam=${cam} (${width}x${height})`);
-      }
-    }
-
-    // 2) Per-camera intrinsics + extrinsics (normal / fisheye)
+    // 2) Intrinsics + extrinsics
     const runTs = formatTimestamp(new Date());
-    let intrA: Float32Array | null = null, distA: Float32Array | null = null, rA: Float32Array | null = null, tA: Float32Array | null = null;
-    let intrB: Float32Array | null = null, distB: Float32Array | null = null, rB: Float32Array | null = null, tB: Float32Array | null = null;
-    try {
-      if (detA.length > 0) {
-        const width = detA[0].width, height = detA[0].height;
-        if (modelA === "fisheye") {
-          const { ok, intr, dist, rvecs, tvecs } = await wrk.cvCalcInnerParamsFisheyeExt(width, height, detA.map((d) => d.points));
-          intrA = intr; distA = dist; rA = rvecs; tA = tvecs;
-          appendLog(`✓ Intrinsics/Extrinsics computed (${camA}, fisheye)${ok ? "" : " (warning: ok=false)"}`);
-        } else {
-          const { ok, intr, dist, rvecs, tvecs } = await wrk.cvCalcInnerParamsExt(width, height, detA.map((d) => d.points));
-          intrA = intr; distA = dist; rA = rvecs; tA = tvecs;
-          appendLog(`✓ Intrinsics/Extrinsics computed (${camA})${ok ? "" : " (warning: ok=false)"}`);
-        }
-        await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_intrinsics.json`, { width, height, intrinsics3x3: Array.from(intrA!) }));
-        await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_distCoeffs.json`, { distCoeffs: Array.from(distA!) }));
-        if (rA && tA) {
-          const frames = detA.map((d, i) => ({ ts: d.ts, rvec: Array.from(rA!.slice(i*3, i*3+3)), tvec: Array.from(tA!.slice(i*3, i*3+3)) }));
-          await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_extrinsics.json`, { frames }));
-        }
-      }
-    } catch (e: any) {
-      appendLog(`! Intrinsics (${camA}) failed: ${String(e)}`);
-    }
-    try {
-      if (detB.length > 0) {
-        const width = detB[0].width, height = detB[0].height;
-        if (modelB === "fisheye") {
-          const { ok, intr, dist, rvecs, tvecs } = await wrk.cvCalcInnerParamsFisheyeExt(width, height, detB.map((d) => d.points));
-          intrB = intr; distB = dist; rB = rvecs; tB = tvecs;
-          appendLog(`✓ Intrinsics/Extrinsics computed (${camB}, fisheye)${ok ? "" : " (warning: ok=false)"}`);
-        } else {
-          const { ok, intr, dist, rvecs, tvecs } = await wrk.cvCalcInnerParamsExt(width, height, detB.map((d) => d.points));
-          intrB = intr; distB = dist; rB = rvecs; tB = tvecs;
-          appendLog(`✓ Intrinsics/Extrinsics computed (${camB})${ok ? "" : " (warning: ok=false)"}`);
-        }
-        await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_intrinsics.json`, { width, height, intrinsics3x3: Array.from(intrB!) }));
-        await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_distCoeffs.json`, { distCoeffs: Array.from(distB!) }));
-        if (rB && tB) {
-          const frames = detB.map((d, i) => ({ ts: d.ts, rvec: Array.from(rB!.slice(i*3, i*3+3)), tvec: Array.from(tB!.slice(i*3, i*3+3)) }));
-          await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_extrinsics.json`, { frames }));
-        }
-      }
-    } catch (e: any) {
-      appendLog(`! Intrinsics (${camB}) failed: ${String(e)}`);
-    }
+    const { intr: intrA, dist: distA, rvecs: rA, tvecs: tA } = await computeAndSaveIntrinsics(
+      wrk,
+      camA,
+      modelA,
+      detA,
+      runTs,
+      appendLog
+    );
+    const { intr: intrB, dist: distB, rvecs: rB, tvecs: tB } = await computeAndSaveIntrinsics(
+      wrk,
+      camB,
+      modelB,
+      detB,
+      runTs,
+      appendLog
+    );
 
-    // 3) Undistort maps (if intrinsics available)
-    try {
-      if (intrA && distA && detA.length > 0) {
-        const width = detA[0].width, height = detA[0].height;
-        const { mapX, mapY } = await wrk.cvCalcUndistMap(width, height, intrA, distA);
-        await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_remapX`, mapX, width, height));
-        await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_remapY`, mapY, width, height));
-        appendLog(`✓ Undistortion map (${camA}) saved`);
-      }
-    } catch (e: any) {
-      appendLog(`! Undistortion map (${camA}) failed: ${String(e)}`);
-    }
-    try {
-      if (intrB && distB && detB.length > 0) {
-        const width = detB[0].width, height = detB[0].height;
-        const { mapX, mapY } = await wrk.cvCalcUndistMap(width, height, intrB, distB);
-        await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_remapX`, mapX, width, height));
-        await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_remapY`, mapY, width, height));
-        appendLog(`✓ Undistortion map (${camB}) saved`);
-      }
-    } catch (e: any) {
-      appendLog(`! Undistortion map (${camB}) failed: ${String(e)}`);
-    }
+    // 3) Undistortion maps
+    if (detA.length > 0) await saveUndistortionMaps(wrk, camA, detA[0].width, detA[0].height, intrA, distA, runTs, appendLog);
+    if (detB.length > 0) await saveUndistortionMaps(wrk, camB, detB[0].width, detB[0].height, intrB, distB, runTs, appendLog);
 
-    // 4) Inter-camera mapping (undist domain remap)
-    let saved = 0;
-    for (const a of detA) {
-      const b = detB.find((x) => x.ts === a.ts);
-      if (!b) continue;
-      try {
-        if (!intrA || !distA || !intrB || !distB) throw new Error("intrinsics missing");
-        const { H } = await wrk.cvCalcHomographyUndist(a.points, b.points, intrA, distA, intrB, distB);
-        await putFile(jsonFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_to_cam-${sanitize(camB)}_${a.ts}_H_undist.json`, { homography3x3: Array.from(H) }));
-        const { mapX, mapY } = await wrk.cvCalcInterRemapUndist(a.width, a.height, b.width, b.height, intrA, distA, intrB, distB, H);
-        await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_to_cam-${sanitize(camB)}_${a.ts}_mappingX`, mapX, a.width, a.height));
-        await putFile(remapFile(`2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_to_cam-${sanitize(camB)}_${a.ts}_mappingY`, mapY, a.width, a.height));
-        saved++;
-      } catch (e: any) {
-        appendLog(`! Homography save failed: ${a.ts} (${String(e)})`);
-      }
-    }
-    appendLog(`✓ Inter-camera mapping saved (undist domain): ${saved}/${pick.length}`);
+    // 4) Inter-camera mapping
+    await computeAndSaveInterMapping(wrk, detA, detB, intrA, distA, intrB, distB, camA, camB, runTs, appendLog);
     setBusy(false);
   }
 
@@ -280,60 +199,26 @@ export default function Page() {
           </section>
           <section className="col" style={{ gap: 8 }}>
             <h4>Log</h4>
-            <pre style={{ minHeight: 120, maxHeight: 240, overflow: "auto", background: "#111", padding: 8, borderRadius: 4 }}>{log}</pre>
+            <pre
+              style={{
+                minHeight: 120,
+                maxHeight: 240,
+                overflow: "auto",
+                background: "#111",
+                color: "#eaeaea",
+                padding: 8,
+                borderRadius: 4,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {log}
+            </pre>
           </section>
           {/* No file preview on this page (Home only) */}
         </div>
       </main>
     </>
   );
-}
-
-function parseShotKey(path: string): ShotKey | null {
-  // 1-syncro-checkerboard_shots/<ts>_cam-<cam>
-  const m = path.match(/^1-syncro-checkerboard_shots\/(.+?)_cam-(.+)$/);
-  if (!m) return null;
-  return { ts: m[1], cam: m[2] };
-}
-
-function formatTimestamp(d: Date) {
-  const p = (n: number, w = 2) => n.toString().padStart(w, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
-}
-
-function sanitize(s: string) {
-  return s.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80);
-}
-
-function shorten(s: string) {
-  if (!s) return s;
-  return s.length > 48 ? s.slice(0, 22) + "…" + s.slice(-22) : s;
-}
-
-function fileToRGBA(file: FileEntry): { rgba: Uint8ClampedArray; width: number; height: number } {
-  const w = file.width ?? 0;
-  const h = file.height ?? 0;
-  const u8 = new Uint8ClampedArray(file.data);
-  if (file.type === "grayscale-image") {
-    if (file.channels === 4) return { rgba: u8, width: w, height: h };
-    const out = new Uint8ClampedArray(w * h * 4);
-    for (let i = 0; i < w * h; i++) {
-      const v = u8[i];
-      out[i * 4 + 0] = out[i * 4 + 1] = out[i * 4 + 2] = v;
-      out[i * 4 + 3] = 255;
-    }
-    return { rgba: out, width: w, height: h };
-  }
-  return { rgba: u8, width: w, height: h };
-}
-
-function jsonFile(path: string, obj: any): FileEntry {
-  const data = new TextEncoder().encode(JSON.stringify(obj));
-  return { path, type: "other", data: data.buffer as ArrayBuffer };
-}
-
-function remapFile(path: string, arr: Float32Array, width: number, height: number): FileEntry {
-  return { path, type: "remap", data: arr.buffer as ArrayBuffer, width, height, channels: 1 };
 }
 
 // No FilePreview on this page (Home only)

@@ -13,6 +13,17 @@ const nextConfig = {
       test: /\.wasm$/,
       type: "asset/resource",
     });
+    // Treat any `?url` import (including JS glue) as a file URL
+    config.module.rules.push({
+      resourceQuery: /url/,
+      type: "asset/resource",
+    });
+    // Ensure @wasm alias resolves in both app code and workers
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@wasm": path.resolve(process.cwd(), "src-wasm/index.js"),
+    };
     return config;
   },
 };
