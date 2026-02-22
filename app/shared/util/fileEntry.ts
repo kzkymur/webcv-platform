@@ -26,3 +26,22 @@ export function remapFile(path: string, arr: Float32Array, width: number, height
   return { path, type: "remap", data: arr.buffer as ArrayBuffer, width, height, channels: 1 };
 }
 
+export function remapXYFile(
+  path: string,
+  mapX: Float32Array,
+  mapY: Float32Array,
+  width: number,
+  height: number
+): FileEntry {
+  const n = width * height;
+  if (mapX.length !== n || mapY.length !== n) {
+    throw new Error(`remapXYFile: map sizes mismatch (got ${mapX.length}, ${mapY.length}, expected ${n})`);
+  }
+  const interleaved = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const j = i * 2;
+    interleaved[j] = mapX[i];
+    interleaved[j + 1] = mapY[i];
+  }
+  return { path, type: "remapXY", data: interleaved.buffer as ArrayBuffer, width, height, channels: 2 };
+}

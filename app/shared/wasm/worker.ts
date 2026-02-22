@@ -287,6 +287,51 @@ self.onmessage = async (ev: MessageEvent<any>) => {
     return;
   }
 
+  // cv/calcHomographyUndistQuality
+  if (type === "cv/calcHomographyUndistQuality") {
+    const { aPoints, bPoints, intrA, distA, intrB, distB } = ev.data as any;
+    const Module = await getModule();
+    try {
+      const n = Math.min(new Float32Array(aPoints).length, new Float32Array(bPoints).length) / 2;
+      const aPtr = Module.ccall("getFloatBuffer", "number", ["number"], [n * 2]);
+      const bPtr = Module.ccall("getFloatBuffer", "number", ["number"], [n * 2]);
+      new Float32Array(Module.HEAPU8.buffer, aPtr, n * 2).set(new Float32Array(aPoints).subarray(0, n * 2));
+      new Float32Array(Module.HEAPU8.buffer, bPtr, n * 2).set(new Float32Array(bPoints).subarray(0, n * 2));
+      const intrAPtr = Module.ccall("getFloatBuffer", "number", ["number"], [9]);
+      const distAPtr = Module.ccall("getFloatBuffer", "number", ["number"], [8]);
+      const intrBPtr = Module.ccall("getFloatBuffer", "number", ["number"], [9]);
+      const distBPtr = Module.ccall("getFloatBuffer", "number", ["number"], [8]);
+      new Float32Array(Module.HEAPU8.buffer, intrAPtr, 9).set(new Float32Array(intrA));
+      new Float32Array(Module.HEAPU8.buffer, distAPtr, 8).set(new Float32Array(distA));
+      new Float32Array(Module.HEAPU8.buffer, intrBPtr, 9).set(new Float32Array(intrB));
+      new Float32Array(Module.HEAPU8.buffer, distBPtr, 8).set(new Float32Array(distB));
+      const hPtr = Module.ccall("getFloatBuffer", "number", ["number"], [9]);
+      const mPtr = Module.ccall("getFloatBuffer", "number", ["number"], [2]);
+      Module.ccall(
+        "calcHomographyUndistQuality",
+        null,
+        ["number","number","number","number","number","number","number","number","number"],
+        [aPtr, bPtr, n, intrAPtr, distAPtr, intrBPtr, distBPtr, hPtr, mPtr]
+      );
+      const h = new Float32Array(new Float32Array(Module.HEAPU8.buffer, hPtr, 9));
+      const metrics = new Float32Array(new Float32Array(Module.HEAPU8.buffer, mPtr, 2));
+      const hCopy = new Float32Array(h);
+      const mCopy = new Float32Array(metrics);
+      Module.ccall("clearBuffer", null, ["number"], [aPtr]);
+      Module.ccall("clearBuffer", null, ["number"], [bPtr]);
+      Module.ccall("clearBuffer", null, ["number"], [intrAPtr]);
+      Module.ccall("clearBuffer", null, ["number"], [distAPtr]);
+      Module.ccall("clearBuffer", null, ["number"], [intrBPtr]);
+      Module.ccall("clearBuffer", null, ["number"], [distBPtr]);
+      Module.ccall("clearBuffer", null, ["number"], [hPtr]);
+      Module.ccall("clearBuffer", null, ["number"], [mPtr]);
+      (self as any).postMessage({ id, ok: true, type: "cv/calcHomographyUndistQuality", H: hCopy.buffer, metrics: mCopy.buffer }, [hCopy.buffer as any, mCopy.buffer as any]);
+    } catch (e) {
+      (self as any).postMessage({ id, ok: false, type: "cv/calcHomographyUndistQuality", error: String(e || "unknown error") });
+    }
+    return;
+  }
+
   // cv/calcInterRemapUndist
   if (type === "cv/calcInterRemapUndist") {
     const { widthA, heightA, widthB, heightB, intrA, distA, intrB, distB, H } = ev.data as any;

@@ -4,6 +4,6 @@
   - カメラの内部・外部パラメータの算出と、カメラ間の位置合わせを行います。
   - UI は基本機能のファイルシステムに似た、画像ファイルを選択するマルチセレクト UI といくつかのオプションセレクトボックス（例：カメラモデル が fisheye か普通か）、実行ボタンが配置される
     - ユーザはマルチセレクト UI から複数のファイルペアを選択して実行ボタンを押す。
-    - wasm で opencv を使用した計算が走り、それぞれのカメラの内部パラメータ・外部パラメータおよび、カメラ間の座標変換パラメータがファイルシステム上の「2-calibrate-scenes/日時 + （パラメータごとの prefix） 」の名前で保存される。
-    - Opencv の remap により、それぞれのカメラの歪み補正 map が「2-calibrate-scenes/日時 + （web|thermo）\_remap 」の名前で保存される
+    - wasm で opencv を使用した計算が走り、それぞれのカメラの内部パラメータ・外部パラメータは 1 ファイル（例: `2-calibrate-scenes/<ts>_cam-<name>_calibration.json`）として保存される。カメラ間の座標変換パラメータはペアごとのファイルとして保存される。
+    - Opencv の remap により、それぞれのカメラの歪み補正 map が「2-calibrate-scenes/日時 + \_remapXY.xy」の名前で保存される（`.xy` は JSON に含めない）
     - Opencv の remap により、それぞれのカメラの間の画素レベルマッピングが「2-calibrate-scenes/日時 + （cam*n_name)）\_to*(cam_m_name)\_mapping 」の名前で保存される

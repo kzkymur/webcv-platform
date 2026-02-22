@@ -85,6 +85,28 @@ Important
 - Keep TS wrapper names and C++ export names in sync. If you add a new C++ function, add a corresponding method in `wrapper.ts` and adjust types.
 - Known mismatch to fix if used: C++ function is `Transform` (capital T) while the wrapper calls `transform`. Align names before use.
 
+File artifacts (calibration outputs)
+
+- Per‑camera calibration is saved as a single JSON file (intrinsics, distortion coeffs, optional per‑frame extrinsics):
+  - `2-calibrate-scenes/<runTs>_cam-<CamName>_calibration.json`
+  - Shape: `{ width, height, model, intrinsics3x3: number[9], distCoeffs: number[], frames?: { ts, rvec: number[3], tvec: number[3] }[] }`
+- Undistortion maps are stored as a single interleaved field: file type `remapXY`, extension `.xy`, path pattern:
+  - `2-calibrate-scenes/<runTs>_cam-<CamName>_remapXY.xy`
+  - Payload: Float32Array length `width * height * 2`, interleaved `[sx, sy]` in pixel units.
+- Inter‑camera mapping (undistorted domain) is saved as canonical pairs (no per‑frame `<ts>` files):
+  - Forward (A→B):
+    - `2-calibrate-scenes/<runTs>_cam-<A>_to_cam-<B>_H_undist.json`
+    - `2-calibrate-scenes/<runTs>_cam-<A>_to_cam-<B>_mappingXY.xy`
+  - Reverse (B→A):
+    - `2-calibrate-scenes/<runTs>_cam-<B>_to_cam-<A>_H_undist.json`
+    - `2-calibrate-scenes/<runTs>_cam-<B>_to_cam-<A>_mappingXY.xy`
+  - Selection policy: evaluate all candidate frames, choose the best based on highest inlier ratio (RANSAC in undistorted domain), then lowest RMSE (px) on inliers. The selected timestamp is recorded in the JSON as `metrics.selectedTs`. The `.xy` payload is Float32 interleaved `[sx, sy]` per destination pixel.
+  - Additionally, the pipeline emits a canonical best pair without `<ts>` based on inlier ratio (primary) and RMSE in pixels (secondary):
+    - `2-calibrate-scenes/<runTs>_cam-<A>_to_cam-<B>_H_undist.json`
+    - `2-calibrate-scenes/<runTs>_cam-<A>_to_cam-<B>_mappingXY.xy`
+    - The JSON embeds `{ metrics: { rmse, inliers, total, selectedTs } }`.
+- Preview: treat `remapXY` like optical flow for visualization; when needed, displacement can be shown as `(sx - x, sy - y)`.
+
 ---
 
 ## Serial + Hardware

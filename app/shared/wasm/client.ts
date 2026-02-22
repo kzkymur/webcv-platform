@@ -107,6 +107,26 @@ export class WasmWorkerClient {
     return { H: new Float32Array(res.H) };
   }
 
+  async cvCalcHomographyUndistQuality(aPoints: Float32Array, bPoints: Float32Array, intrA: Float32Array, distA: Float32Array, intrB: Float32Array, distB: Float32Array) {
+    const res = await this.req<{ ok: boolean; H?: ArrayBuffer; metrics?: ArrayBuffer } | any>({
+      type: "cv/calcHomographyUndistQuality",
+      aPoints: aPoints.buffer,
+      bPoints: bPoints.buffer,
+      intrA: intrA.buffer,
+      distA: distA.buffer,
+      intrB: intrB.buffer,
+      distB: distB.buffer,
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcHomographyUndistQuality failed");
+    const H = new Float32Array(res.H);
+    const m = new Float32Array(res.metrics);
+    const rmse = m[0] ?? Number.NaN;
+    const inliers = m[1] ?? 0;
+    const total = (aPoints.length / 2) | 0;
+    const inlierRatio = total > 0 ? inliers / total : 0;
+    return { H, rmse, inliers, total, inlierRatio };
+  }
+
   async cvCalcInterRemapUndist(widthA: number, heightA: number, widthB: number, heightB: number, intrA: Float32Array, distA: Float32Array, intrB: Float32Array, distB: Float32Array, H: Float32Array) {
     const res = await this.req<{ ok: boolean; mapX?: ArrayBuffer; mapY?: ArrayBuffer } | any>({
       type: "cv/calcInterRemapUndist",

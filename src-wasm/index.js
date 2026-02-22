@@ -27,7 +27,7 @@ Module['ready'] = new Promise((resolve, reject) => {
   readyPromiseResolve = resolve;
   readyPromiseReject = reject;
 });
-["_main","getExceptionMessage","___get_exception_message","_free","_memory","_helloWorld","_getU8Buffer","_getI32Buffer","_getU32Buffer","_getFloatBuffer","_getDoubleBuffer","_getImgBuffer","_clearBuffer","_timesBy2","_findChessboardCorners","_calcInnerParams","_calcInnerParamsExt","_calcInnerParamsFisheyeExt","_calcUndistMap","_undistort","_undistortPoint","_calcHomography","_calcHomographyUndist","_Transform","_calcInterRemapUndist","___indirect_function_table","_fflush","onRuntimeInitialized"].forEach((prop) => {
+["_main","getExceptionMessage","___get_exception_message","_free","_memory","_helloWorld","_getU8Buffer","_getI32Buffer","_getU32Buffer","_getFloatBuffer","_getDoubleBuffer","_getImgBuffer","_clearBuffer","_timesBy2","_findChessboardCorners","_calcInnerParams","_calcInnerParamsExt","_calcInnerParamsFisheyeExt","_calcUndistMap","_undistort","_undistortPoint","_calcHomography","_calcHomographyUndist","_calcHomographyUndistQuality","_Transform","_calcInterRemapUndist","___indirect_function_table","_fflush","onRuntimeInitialized"].forEach((prop) => {
   if (!Object.getOwnPropertyDescriptor(Module['ready'], prop)) {
     Object.defineProperty(Module['ready'], prop, {
       get: () => abort('You are getting ' + prop + ' on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js'),
@@ -5012,6 +5012,7 @@ var _undistort = Module['_undistort'] = createExportWrapper('undistort');
 var _undistortPoint = Module['_undistortPoint'] = createExportWrapper('undistortPoint');
 var _calcHomography = Module['_calcHomography'] = createExportWrapper('calcHomography');
 var _calcHomographyUndist = Module['_calcHomographyUndist'] = createExportWrapper('calcHomographyUndist');
+var _calcHomographyUndistQuality = Module['_calcHomographyUndistQuality'] = createExportWrapper('calcHomographyUndistQuality');
 var _Transform = Module['_Transform'] = createExportWrapper('Transform');
 var _calcInterRemapUndist = Module['_calcInterRemapUndist'] = createExportWrapper('calcInterRemapUndist');
 var ___cxa_free_exception = createExportWrapper('__cxa_free_exception');

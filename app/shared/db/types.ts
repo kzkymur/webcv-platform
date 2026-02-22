@@ -3,6 +3,7 @@ export type FileType =
   | "grayscale-image"
   | "optical-flow"
   | "remap"
+  | "remapXY"
   | "other";
 
 export type FileEntry = {

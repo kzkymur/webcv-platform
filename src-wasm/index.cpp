@@ -10,6 +10,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
 #include <vector>
+#include <cmath>
 
 #include <emscripten/emscripten.h>
 
@@ -355,6 +356,58 @@ EXTERN EMSCRIPTEN_KEEPALIVE void calcHomographyUndist(void * aDots, void * bDots
   cv::Mat h = cv::findHomography(aPts, bPts, cv::RANSAC);
   h.convertTo(h, CV_32F);
   writeMat(h, dest);
+}
+
+// Variant with quality metrics: outputs H (3x3 float) and writes two floats to metricsDest:
+// metricsDest[0] = RMSE (px) over inliers in undist domain, metricsDest[1] = inlier count (as float)
+EXTERN EMSCRIPTEN_KEEPALIVE void calcHomographyUndistQuality(
+  void * aDots, void * bDots, int length,
+  void* intrA, void* distA, void* intrB, void* distB,
+  void* hDest, void* metricsDest
+) {
+  // Read and undistort points
+  cv::Mat aMat = readPointsVec2f(aDots, length);
+  cv::Mat bMat = readPointsVec2f(bDots, length);
+  cv::Mat intrAm = readMat32F(intrA, 3, 3);
+  cv::Mat distAm = readMat32F(distA, 1, 8);
+  cv::Mat intrBm = readMat32F(intrB, 3, 3);
+  cv::Mat distBm = readMat32F(distB, 1, 8);
+  cv::Mat aUD, bUD;
+  cv::undistortPoints(aMat, aUD, intrAm, distAm, cv::noArray(), intrAm);
+  cv::undistortPoints(bMat, bUD, intrBm, distBm, cv::noArray(), intrBm);
+
+  // Compute H with RANSAC and get inlier mask
+  std::vector<cv::Point2f> aPts = mat2VecPoint2f(aUD);
+  std::vector<cv::Point2f> bPts = mat2VecPoint2f(bUD);
+  cv::Mat inlierMask;
+  cv::Mat h64 = cv::findHomography(aPts, bPts, cv::RANSAC, 3.0, inlierMask);
+  cv::Mat h;
+  h64.convertTo(h, CV_32F);
+  writeMat(h, hDest);
+
+  // Compute RMSE on inliers in undist domain
+  double se = 0.0;
+  int inliers = 0;
+  for (int i = 0; i < (int)aPts.size(); i++) {
+    if (inlierMask.empty() || inlierMask.at<uchar>(i)) {
+      // Apply homography H to aPts[i] (copy of applyH without relying on its forward declaration)
+      float x = aPts[i].x, y = aPts[i].y;
+      float X = h.at<float>(0,0)*x + h.at<float>(0,1)*y + h.at<float>(0,2);
+      float Y = h.at<float>(1,0)*x + h.at<float>(1,1)*y + h.at<float>(1,2);
+      float Z = h.at<float>(2,0)*x + h.at<float>(2,1)*y + h.at<float>(2,2);
+      if (Z == 0.f) Z = 1e-6f;
+      cv::Point2f p(X / Z, Y / Z);
+      double dx = (double)p.x - (double)bPts[i].x;
+      double dy = (double)p.y - (double)bPts[i].y;
+      se += dx * dx + dy * dy;
+      inliers++;
+    }
+  }
+  float rmse = (inliers > 0) ? (float)std::sqrt(se / (double)inliers) : 1e9f;
+  cv::Mat metrics(1, 2, CV_32F);
+  metrics.at<float>(0) = rmse;
+  metrics.at<float>(1) = (float)inliers;
+  writeMat(metrics, metricsDest);
 }
 
 EXTERN EMSCRIPTEN_KEEPALIVE void Transform(int x, int y, void * homography, void * cameraMat, void * distCoeffs, void* dest) {
