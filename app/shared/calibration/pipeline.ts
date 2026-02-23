@@ -92,7 +92,7 @@ export async function computeAndSaveIntrinsics(
     }
     await putFile(
       jsonFile(
-        `2-calibrate-scenes/${runTs}_cam-${sanitize(camName)}_calibration.json`,
+        `2-calibrate-scenes/${runTs}/cam-${sanitize(camName)}_calibration.json`,
         out
       )
     );
@@ -118,7 +118,7 @@ export async function saveUndistortionMaps(
     const { mapX, mapY } = await wrk.cvCalcUndistMap(width, height, intr, dist);
     await putFile(
       remapXYFile(
-        `2-calibrate-scenes/${runTs}_cam-${sanitize(camName)}_remapXY.xy`,
+        `2-calibrate-scenes/${runTs}/cam-${sanitize(camName)}_remapXY.xy`,
         mapX,
         mapY,
         width,
@@ -144,6 +144,8 @@ export async function computeAndSaveInterMapping(
   runTs: string,
   log: (s: string) => void
 ) {
+  // H-only path: estimate best homography in undistorted domain and save JSONs.
+  // Pairwise dense remap fields (A→B/B→A `mappingXY.xy`) are intentionally not generated.
   let saved = 0;
   if (!intrA || !distA || !intrB || !distB) {
     log("! Inter mapping skipped: intrinsics missing");
@@ -160,7 +162,7 @@ export async function computeAndSaveInterMapping(
       log(`! Homography quality failed: ${a.ts} (${String(e)})`);
     }
   }
-  // Select best candidate and emit canonical files (without <ts>)
+  // Select best candidate and emit canonical H-only files (without <ts>)
   if (candidates.length > 0) {
     const N = candidates[0].total || (detA[0]?.points?.length ?? 0) / 2;
     const best = candidates
@@ -170,65 +172,21 @@ export async function computeAndSaveInterMapping(
       // Canonical A->B JSON (with metrics)
       await putFile(
         jsonFile(
-          `2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_to_cam-${sanitize(camB)}_H_undist.json`,
+          `2-calibrate-scenes/${runTs}/cam-${sanitize(camA)}_to_cam-${sanitize(camB)}_H_undist.json`,
           { homography3x3: Array.from(best.H), metrics: { rmse: best.rmse, inliers: best.inliers, total: N, selectedTs: best.ts } }
         )
       );
+      // Also compute canonical B->A using the same selected ts (recompute H for B->A)
       const aMatch = best.a;
       const bMatch = best.b;
-      const widthA = aMatch.width;
-      const heightA = aMatch.height;
-      const widthB = bMatch.width;
-      const heightB = bMatch.height;
-      const { mapX, mapY } = await wrk.cvCalcInterRemapUndist(
-        widthA,
-        heightA,
-        widthB,
-        heightB,
-        intrA,
-        distA,
-        intrB,
-        distB,
-        best.H
-      );
-      await putFile(
-        remapXYFile(
-          `2-calibrate-scenes/${runTs}_cam-${sanitize(camA)}_to_cam-${sanitize(camB)}_mappingXY.xy`,
-          mapX,
-          mapY,
-          widthA,
-          heightA
-        )
-      );
-      // Also compute canonical B->A using the same selected ts (recompute H for B->A)
       const rev = await wrk.cvCalcHomographyUndistQuality(bMatch.points, aMatch.points, intrB, distB, intrA, distA);
       await putFile(
         jsonFile(
-          `2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_to_cam-${sanitize(camA)}_H_undist.json`,
+          `2-calibrate-scenes/${runTs}/cam-${sanitize(camB)}_to_cam-${sanitize(camA)}_H_undist.json`,
           { homography3x3: Array.from(rev.H), metrics: { rmse: rev.rmse, inliers: rev.inliers, total: N, selectedTs: best.ts } }
         )
       );
-      const revMap = await wrk.cvCalcInterRemapUndist(
-        widthB,
-        heightB,
-        widthA,
-        heightA,
-        intrB,
-        distB,
-        intrA,
-        distA,
-        rev.H
-      );
-      await putFile(
-        remapXYFile(
-          `2-calibrate-scenes/${runTs}_cam-${sanitize(camB)}_to_cam-${sanitize(camA)}_mappingXY.xy`,
-          revMap.mapX,
-          revMap.mapY,
-          widthB,
-          heightB
-        )
-      );
-      log(`✓ Selected best mapping ts=${best.ts} (A→B inliers=${best.inliers}/${N}, rmse=${best.rmse.toFixed(3)}px). Canonical A→B and B→A files saved.`);
+      log(`✓ Selected best homography ts=${best.ts} (A→B inliers=${best.inliers}/${N}, rmse=${best.rmse.toFixed(3)}px). Saved A→B and B→A H_undist.json (no mappingXY).`);
     } catch (e: any) {
       log(`! Canonical mapping save failed: ${String(e)}`);
     }

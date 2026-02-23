@@ -7,17 +7,25 @@ import Sidebar from "@/components/Sidebar";
 import { useCameraIds } from "@/shared/hooks/useCameraStreams";
 import { putFile } from "@/shared/db";
 import type { FileEntry } from "@/shared/db/types";
-import { readNamespacedStore, updateNamespacedStore } from "@/shared/module/loaclStorage";
+import {
+  readNamespacedStore,
+  updateNamespacedStore,
+} from "@/shared/module/loaclStorage";
 import { formatTimestamp } from "@/shared/util/time";
 import { sanitize } from "@/shared/util/strings";
 import { SHOTS_DIR } from "@/shared/util/shots";
-import CameraPreview, { type CameraPreviewHandle, type CaptureFormat } from "@/shared/components/CameraPreview";
+import CameraPreview, {
+  type CameraPreviewHandle,
+  type CaptureFormat,
+} from "@/shared/components/CameraPreview";
 
 export default function Page() {
   const [ids] = useCameraIds();
   // Per-camera capture format
   const [fmtById, setFmtById] = useState<Record<string, CaptureFormat>>(() => {
-    const st = readNamespacedStore<{ shotOptions?: Record<string, { fmt: CaptureFormat }> }>();
+    const st = readNamespacedStore<{
+      shotOptions?: Record<string, { fmt: CaptureFormat }>;
+    }>();
     const map: Record<string, CaptureFormat> = {};
     if (st.shotOptions) {
       for (const [k, v] of Object.entries(st.shotOptions)) map[k] = v.fmt;
@@ -28,7 +36,10 @@ export default function Page() {
   const panelsRef = useRef<Map<string, CameraPreviewHandle>>(new Map());
 
   // Helper to register child preview handles by deviceId
-  const register = (deviceId: string | undefined, handle: CameraPreviewHandle | null) => {
+  const register = (
+    deviceId: string | undefined,
+    handle: CameraPreviewHandle | null
+  ) => {
     if (!deviceId) return;
     const map = panelsRef.current;
     if (handle) map.set(deviceId, handle);
@@ -54,7 +65,8 @@ export default function Page() {
             const name = sanitize(shot.label || id);
             const baseDir = SHOTS_DIR;
             const ext = perFmt === "gray8" ? ".gray" : ".rgb"; // store with explicit extension
-            const filePath = `${baseDir}/${ts}_cam-${name}${ext}`;
+            // New nested structure: 1-syncro-checkerboard_shots/<ts>/cam-<name>.<ext>
+            const filePath = `${baseDir}/${ts}/cam-${name}${ext}`;
             const entry: FileEntry = {
               path: filePath,
               type: perFmt === "gray8" ? "grayscale-image" : "rgb-image",
@@ -75,7 +87,11 @@ export default function Page() {
 
   return (
     <>
-      <Sidebar onSelectFile={() => { /* page 1: no file preview */ }} />
+      <Sidebar
+        onSelectFile={() => {
+          /* page 1: no file preview */
+        }}
+      />
       <header className="header">
         <div className="row" style={{ justifyContent: "space-between" }}>
           <b>1. Syncro Checkerboard Shots</b>
@@ -91,7 +107,9 @@ export default function Page() {
           <section className="col" style={{ gap: 12 }}>
             <h4>Selected Cameras</h4>
             {ids.length === 0 && (
-              <div style={{ opacity: 0.7 }}>No cameras selected. Add from Device Settings in the sidebar.</div>
+              <div style={{ opacity: 0.7 }}>
+                No cameras selected. Add from Device Settings in the sidebar.
+              </div>
             )}
             {ids.map((id, idx) => (
               <CameraPreview
@@ -102,8 +120,13 @@ export default function Page() {
                   setFmtById((prev) => {
                     const next = { ...prev, [id || ""]: fmt };
                     // persist
-                    const st = readNamespacedStore<{ shotOptions?: Record<string, { fmt: CaptureFormat }> }>();
-                    const shotOptions = { ...(st.shotOptions || {}) } as Record<string, { fmt: CaptureFormat }>;
+                    const st = readNamespacedStore<{
+                      shotOptions?: Record<string, { fmt: CaptureFormat }>;
+                    }>();
+                    const shotOptions = { ...(st.shotOptions || {}) } as Record<
+                      string,
+                      { fmt: CaptureFormat }
+                    >;
                     if (id) shotOptions[id] = { fmt };
                     updateNamespacedStore({ shotOptions });
                     return next;

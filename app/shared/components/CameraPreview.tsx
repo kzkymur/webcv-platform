@@ -6,12 +6,12 @@ import { useCameraStream } from "@/shared/hooks/useCameraStreams";
 export type CaptureFormat = "rgba8" | "gray8"; // gray16 can be added when available
 
 export type CameraPreviewHandle = {
-  capture: (
-    fmt: CaptureFormat
-  ) => Promise<
-    | { width: number; height: number; data: Uint8ClampedArray; label?: string }
-    | null
-  >;
+  capture: (fmt: CaptureFormat) => Promise<{
+    width: number;
+    height: number;
+    data: Uint8ClampedArray;
+    label?: string;
+  } | null>;
 };
 
 export default function CameraPreview({
@@ -160,4 +160,3 @@ export default function CameraPreview({
     </div>
   );
 }
-

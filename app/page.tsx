@@ -17,34 +17,53 @@ export default function Page() {
             <h3>Feature Index</h3>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/1-syncro-checkerboard-shots"><b>1. Syncro Checkerboard Shots</b></a>
+                <a href="/1-syncro-checkerboard-shots">
+                  <b>1. Syncro Checkerboard Shots</b>
+                </a>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
-                  Capture checkerboard or scene frames from selected cameras in sync. Each trigger saves RGBA images into the built‑in database (OPFS via SQLite Wasm) under
-                  <code> 1-syncro-checkerboard_shots/&lt;timestamp&gt;_cam-&lt;name&gt;</code>. Stand‑alone tool commonly used to gather calibration inputs.
+                  Capture checkerboard or scene frames from selected cameras in
+                  sync. Each trigger saves RGBA images into the built‑in
+                  database (OPFS via SQLite Wasm) under
+                  <code>
+                    {" "}
+                    1-syncro-checkerboard_shots/&lt;timestamp&gt;/cam-&lt;name&gt;.rgb
+                  </code>
+                  . Stand‑alone tool commonly used to gather calibration inputs.
                 </div>
               </div>
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/2-calibrate-scenes"><b>2. Calibrate Scenes</b></a>
+                <a href="/2-calibrate-scenes">
+                  <b>2. Calibrate Scenes</b>
+                </a>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
-                  Detect chessboard corners and compute per‑camera intrinsics/extrinsics (OpenCV via WebAssembly). Generates undistortion maps and optional inter‑camera mappings (undistorted domain).
-                  Outputs are stored under <code>2-calibrate-scenes/</code> such as per‑camera <code>_calibration.json</code>, per‑camera <code>_remapXY.xy</code>, and per‑pair <code>_H_undist.json</code>, <code>_mappingXY.xy</code>.
+                  Detect chessboard corners and compute per‑camera
+                  intrinsics/extrinsics (OpenCV via WebAssembly). Generates
+                  per‑camera undistortion maps and inter‑camera homographies in
+                  the undistorted domain. Outputs are stored under{" "}
+                  <code>2-calibrate-scenes/&lt;runTs&gt;/</code> such as
+                  per‑camera <code>cam-&lt;name&gt;_calibration.json</code>,
+                  per‑camera <code>cam-&lt;name&gt;_remapXY.xy</code>, and
+                  per‑pair <code>cam-A_to_cam-B_H_undist.json</code>.
                 </div>
               </div>
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/3-remap-realtime"><b>3. Remap Realtime</b></a>
+                <a href="/3-remap-realtime">
+                  <b>3. Remap Realtime</b>
+                </a>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
-                  Preview and apply generated remap fields in real time (WebGL). Select a mapping pair to inspect; live application is being integrated next.
+                  Preview and apply generated remap fields in real time (WebGL).
+                  Select an undistortion map (and future inter‑camera options);
+                  live application is being integrated next.
                 </div>
               </div>
             </div>
           </section>
           {activeFile && (
             <section>
-              <h4>Selected File: {activeFile.path}</h4>
               <FilePreview file={activeFile} />
             </section>
           )}
@@ -57,6 +76,54 @@ export default function Page() {
 function FilePreview({ file }: { file: FileEntry }) {
   const [imgData, setImgData] = useState<ImageData | null>(null);
   const [jsonText, setJsonText] = useState<string | null>(null);
+  const [jsonObj, setJsonObj] = useState<any | null>(null);
+
+  function shapeLabel(): string {
+    // Binary types with width/height
+    if (file.type === "rgb-image" || file.type === "grayscale-image") {
+      const w = file.width ?? 0;
+      const h = file.height ?? 0;
+      const c = file.channels ?? 4;
+      return `uint8 [${h}×${w}${c ? `×${c}` : ""}]`;
+    }
+    if (file.type === "remapXY") {
+      const w = file.width ?? 0;
+      const h = file.height ?? 0;
+      return `float32 [${h}×${w}×2]`;
+    }
+    if (file.type === "remap") {
+      const w = file.width ?? 0;
+      const h = file.height ?? 0;
+      return `float32 [${h}×${w}]`;
+    }
+    if (file.type === "optical-flow") {
+      const w = file.width ?? 0;
+      const h = file.height ?? 0;
+      return `float32 [${h}×${w}×2]`;
+    }
+    // JSON and others
+    if (jsonObj && typeof jsonObj === "object") {
+      if (
+        Array.isArray(jsonObj.homography3x3) &&
+        jsonObj.homography3x3.length === 9
+      ) {
+        return "homography3x3: [3×3]";
+      }
+      if (
+        Array.isArray(jsonObj.intrinsics3x3) &&
+        jsonObj.intrinsics3x3.length === 9
+      ) {
+        const w = jsonObj.width ?? file.width ?? "?";
+        const h = jsonObj.height ?? file.height ?? "?";
+        const distN = Array.isArray(jsonObj.distCoeffs)
+          ? jsonObj.distCoeffs.length
+          : "?";
+        return `calibration: image [${h}×${w}], intrinsics [3×3], distCoeffs [${distN}]`;
+      }
+    }
+    // Fallback
+    return "(shape unknown)";
+  }
 
   useEffect(() => {
     if (!file) return;
@@ -68,28 +135,40 @@ function FilePreview({ file }: { file: FileEntry }) {
         const raw = new TextDecoder("utf-8").decode(new Uint8Array(file.data));
         try {
           const parsed = JSON.parse(raw);
+          setJsonObj(parsed);
           setJsonText(JSON.stringify(parsed, null, 2));
         } catch {
           // Not valid JSON? Show as plain text
           setJsonText(raw);
+          setJsonObj(null);
         }
       } catch {
         setJsonText("<unable to decode JSON file>");
+        setJsonObj(null);
       }
       setImgData(null);
       return;
     }
 
     setJsonText(null);
+    setJsonObj(null);
 
     // Vector field preview: optical-flow / remapXY as HSV color wheel
     if (file.type === "optical-flow" || file.type === "remapXY") {
       const w = file.width ?? 0;
       const h = file.height ?? 0;
       const n = w * h;
-      if (n === 0) { setImgData(null); return; }
+      if (n === 0) {
+        setImgData(null);
+        return;
+      }
       const xy = new Float32Array(file.data);
-      if (xy.length !== n * 2) { setImgData(null); return; }
+      console.log(file.path);
+      console.log(xy);
+      if (xy.length !== n * 2) {
+        setImgData(null);
+        return;
+      }
       const rgba = new Uint8ClampedArray(n * 4);
       // Determine magnitude scale using a percentile to avoid outliers
       const mags: number[] = new Array(n);
@@ -98,8 +177,8 @@ function FilePreview({ file }: { file: FileEntry }) {
         for (let x = 0; x < w; x++) {
           const i = y * w + x;
           const j = i * 2;
-          const vx = file.type === "remapXY" ? (xy[j] - x) : xy[j];
-          const vy = file.type === "remapXY" ? (xy[j + 1] - y) : xy[j + 1];
+          const vx = file.type === "remapXY" ? xy[j] - x : xy[j];
+          const vy = file.type === "remapXY" ? xy[j + 1] - y : xy[j + 1];
           mags[i] = Math.hypot(vx, vy);
         }
       }
@@ -110,13 +189,34 @@ function FilePreview({ file }: { file: FileEntry }) {
         const c = v * s;
         const hp = h / 60;
         const x = c * (1 - Math.abs((hp % 2) - 1));
-        let r = 0, g = 0, b = 0;
-        if (hp >= 0 && hp < 1) { r = c; g = x; b = 0; }
-        else if (hp < 2) { r = x; g = c; b = 0; }
-        else if (hp < 3) { r = 0; g = c; b = x; }
-        else if (hp < 4) { r = 0; g = x; b = c; }
-        else if (hp < 5) { r = x; g = 0; b = c; }
-        else { r = c; g = 0; b = x; }
+        let r = 0,
+          g = 0,
+          b = 0;
+        if (hp >= 0 && hp < 1) {
+          r = c;
+          g = x;
+          b = 0;
+        } else if (hp < 2) {
+          r = x;
+          g = c;
+          b = 0;
+        } else if (hp < 3) {
+          r = 0;
+          g = c;
+          b = x;
+        } else if (hp < 4) {
+          r = 0;
+          g = x;
+          b = c;
+        } else if (hp < 5) {
+          r = x;
+          g = 0;
+          b = c;
+        } else {
+          r = c;
+          g = 0;
+          b = x;
+        }
         const m = v - c;
         return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
       }
@@ -124,8 +224,8 @@ function FilePreview({ file }: { file: FileEntry }) {
         for (let x = 0; x < w; x++) {
           const i = y * w + x;
           const j = i * 2;
-          const vx = file.type === "remapXY" ? (xy[j] - x) : xy[j];
-          const vy = file.type === "remapXY" ? (xy[j + 1] - y) : xy[j + 1];
+          const vx = file.type === "remapXY" ? xy[j] - x : xy[j];
+          const vy = file.type === "remapXY" ? xy[j + 1] - y : xy[j + 1];
           const ang = Math.atan2(vy, vx); // -pi..pi
           const deg = (ang * 180) / Math.PI; // -180..180
           const hue = (deg + 360) % 360; // 0..360
@@ -174,39 +274,58 @@ function FilePreview({ file }: { file: FileEntry }) {
     }
   }, [file]);
 
+  const header = (
+    <div
+      className="row"
+      style={{ gap: 8, alignItems: "baseline", marginBottom: 6 }}
+    >
+      <h4 style={{ margin: 0, fontWeight: 600 }}>Selected File:</h4>
+      <code style={{ fontSize: 12 }}>{file.path}</code>
+      <span style={{ opacity: 0.7, fontSize: 12 }}>· {shapeLabel()}</span>
+    </div>
+  );
+
   if (jsonText !== null) {
     return (
-      <pre
-        style={{
-          border: "1px solid #3333",
-          borderRadius: 8,
-          padding: 10,
-          margin: 0,
-          overflow: "auto",
-          maxHeight: 480,
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-          fontSize: 12,
-          whiteSpace: "pre",
-          background: "transparent",
-        }}
-      >
-        {jsonText}
-      </pre>
+      <>
+        {header}
+        <pre
+          style={{
+            border: "1px solid #3333",
+            borderRadius: 8,
+            padding: 10,
+            margin: 0,
+            overflow: "auto",
+            maxHeight: 480,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: 12,
+            whiteSpace: "pre",
+            background: "transparent",
+          }}
+        >
+          {jsonText}
+        </pre>
+      </>
     );
   }
 
   if (!imgData) return null;
   return (
-    <canvas
-      className="canvasWrap"
-      width={imgData.width}
-      height={imgData.height}
-      ref={(c) => {
-        if (!c) return;
-        const ctx = c.getContext("2d");
-        if (!ctx) return;
-        ctx.putImageData(imgData, 0, 0);
-      }}
-    />
+    <>
+      {header}
+      <div className="canvasWrap">
+        <canvas
+          width={imgData.width}
+          height={imgData.height}
+          style={{ width: 640, height: "auto", display: "block" }}
+          ref={(c) => {
+            if (!c) return;
+            const ctx = c.getContext("2d");
+            if (!ctx) return;
+            ctx.putImageData(imgData, 0, 0);
+          }}
+        />
+      </div>
+    </>
   );
 }

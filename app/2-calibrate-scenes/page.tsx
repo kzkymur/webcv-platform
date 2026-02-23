@@ -47,7 +47,9 @@ export default function Page() {
   useEffect(() => {
     (async () => {
       const files = await listFiles();
-      const chk = files.filter((f) => f.path.startsWith("1-syncro-checkerboard_shots/"));
+      const chk = files.filter((f) =>
+        f.path.startsWith("1-syncro-checkerboard_shots/")
+      );
       const map = new Map<string, ShotRow>();
       const cams = new Set<string>();
       for (const f of chk) {
@@ -58,7 +60,9 @@ export default function Page() {
         r.cams[key.cam] = f.path;
         map.set(key.ts, r);
       }
-      const sorted = Array.from(map.values()).sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+      const sorted = Array.from(map.values()).sort((a, b) =>
+        a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0
+      );
       setRows(sorted);
       const camList = Array.from(cams.values()).sort();
       setCamNames(camList);
@@ -67,7 +71,10 @@ export default function Page() {
     })();
   }, []);
 
-  const usableRows = useMemo(() => rows.filter((r) => r.cams[camA] && r.cams[camB]), [rows, camA, camB]);
+  const usableRows = useMemo(
+    () => rows.filter((r) => r.cams[camA] && r.cams[camB]),
+    [rows, camA, camB]
+  );
 
   useEffect(() => {
     // When cameras change, auto-select all usable rows
@@ -90,11 +97,22 @@ export default function Page() {
     appendLog(`Target pairs: ${pick.length} (${camA} ↔ ${camB})`);
     if (pick.length === 0) return setBusy(false);
     // 1) Detect corners
-    const { detA, detB } = await detectCornersForRows(wrk, camA, camB, pick, appendLog);
+    const { detA, detB } = await detectCornersForRows(
+      wrk,
+      camA,
+      camB,
+      pick,
+      appendLog
+    );
 
     // 2) Intrinsics + extrinsics
     const runTs = formatTimestamp(new Date());
-    const { intr: intrA, dist: distA, rvecs: rA, tvecs: tA } = await computeAndSaveIntrinsics(
+    const {
+      intr: intrA,
+      dist: distA,
+      rvecs: rA,
+      tvecs: tA,
+    } = await computeAndSaveIntrinsics(
       wrk,
       camA,
       modelA,
@@ -102,7 +120,12 @@ export default function Page() {
       runTs,
       appendLog
     );
-    const { intr: intrB, dist: distB, rvecs: rB, tvecs: tB } = await computeAndSaveIntrinsics(
+    const {
+      intr: intrB,
+      dist: distB,
+      rvecs: rB,
+      tvecs: tB,
+    } = await computeAndSaveIntrinsics(
       wrk,
       camB,
       modelB,
@@ -112,11 +135,43 @@ export default function Page() {
     );
 
     // 3) Undistortion maps
-    if (detA.length > 0) await saveUndistortionMaps(wrk, camA, detA[0].width, detA[0].height, intrA, distA, runTs, appendLog);
-    if (detB.length > 0) await saveUndistortionMaps(wrk, camB, detB[0].width, detB[0].height, intrB, distB, runTs, appendLog);
+    if (detA.length > 0)
+      await saveUndistortionMaps(
+        wrk,
+        camA,
+        detA[0].width,
+        detA[0].height,
+        intrA,
+        distA,
+        runTs,
+        appendLog
+      );
+    if (detB.length > 0)
+      await saveUndistortionMaps(
+        wrk,
+        camB,
+        detB[0].width,
+        detB[0].height,
+        intrB,
+        distB,
+        runTs,
+        appendLog
+      );
 
     // 4) Inter-camera mapping
-    await computeAndSaveInterMapping(wrk, detA, detB, intrA, distA, intrB, distB, camA, camB, runTs, appendLog);
+    await computeAndSaveInterMapping(
+      wrk,
+      detA,
+      detB,
+      intrA,
+      distA,
+      intrB,
+      distB,
+      camA,
+      camB,
+      runTs,
+      appendLog
+    );
     setBusy(false);
   }
 
@@ -131,13 +186,18 @@ export default function Page() {
               Camera A
               <select value={camA} onChange={(e) => setCamA(e.target.value)}>
                 {camNames.map((n) => (
-                  <option key={n} value={n}>{n}</option>
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
                 ))}
               </select>
             </label>
             <label className="row" style={{ gap: 6 }}>
               Model
-              <select value={modelA} onChange={(e) => setModelA(e.target.value as CameraModel)}>
+              <select
+                value={modelA}
+                onChange={(e) => setModelA(e.target.value as CameraModel)}
+              >
                 <option value="normal">normal</option>
                 <option value="fisheye">fisheye</option>
               </select>
@@ -146,18 +206,26 @@ export default function Page() {
               Camera B
               <select value={camB} onChange={(e) => setCamB(e.target.value)}>
                 {camNames.map((n) => (
-                  <option key={n} value={n}>{n}</option>
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
                 ))}
               </select>
             </label>
             <label className="row" style={{ gap: 6 }}>
               Model
-              <select value={modelB} onChange={(e) => setModelB(e.target.value as CameraModel)}>
+              <select
+                value={modelB}
+                onChange={(e) => setModelB(e.target.value as CameraModel)}
+              >
                 <option value="normal">normal</option>
                 <option value="fisheye">fisheye</option>
               </select>
             </label>
-            <button onClick={runCalibration} disabled={busy || !camA || !camB || selectedTs.size === 0}>
+            <button
+              onClick={runCalibration}
+              disabled={busy || !camA || !camB || selectedTs.size === 0}
+            >
               Run ({selectedTs.size} pairs)
             </button>
           </div>
@@ -172,29 +240,72 @@ export default function Page() {
               <span style={{ fontFamily: "monospace" }}>{camA}</span>
               <span>×</span>
               <span style={{ fontFamily: "monospace" }}>{camB}</span>
-              <button onClick={() => setSelectedTs(new Set(usableRows.map((r) => r.ts)))} disabled={usableRows.length === 0}>Select All</button>
-              <button onClick={() => setSelectedTs(new Set())} disabled={selectedTs.size === 0}>Clear All</button>
+              <button
+                onClick={() =>
+                  setSelectedTs(new Set(usableRows.map((r) => r.ts)))
+                }
+                disabled={usableRows.length === 0}
+              >
+                Select All
+              </button>
+              <button
+                onClick={() => setSelectedTs(new Set())}
+                disabled={selectedTs.size === 0}
+              >
+                Clear All
+              </button>
             </div>
             <div className="tree" style={{ maxHeight: 240, overflow: "auto" }}>
               {usableRows.map((r) => (
-                <label key={r.ts} className="row" style={{ gap: 8, alignItems: "center", padding: "2px 4px" }}>
+                <label
+                  key={r.ts}
+                  className="row"
+                  style={{ gap: 8, alignItems: "center", padding: "2px 4px" }}
+                >
                   <input
                     type="checkbox"
                     checked={selectedTs.has(r.ts)}
                     onChange={(e) => {
                       const s = new Set(selectedTs);
-                      if (e.target.checked) s.add(r.ts); else s.delete(r.ts);
+                      if (e.target.checked) s.add(r.ts);
+                      else s.delete(r.ts);
                       setSelectedTs(s);
                     }}
                   />
-                  <span style={{ width: 280, fontFamily: "monospace" }}>{r.ts}</span>
+                  <span style={{ width: 280, fontFamily: "monospace" }}>
+                    {r.ts}
+                  </span>
                   <span style={{ opacity: 0.8 }}>A:</span>
-                  <span className="file" title={r.cams[camA]} style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shorten(r.cams[camA])}</span>
+                  <span
+                    className="file"
+                    title={r.cams[camA]}
+                    style={{
+                      flex: 1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {shorten(r.cams[camA])}
+                  </span>
                   <span style={{ opacity: 0.8 }}>B:</span>
-                  <span className="file" title={r.cams[camB]} style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shorten(r.cams[camB])}</span>
+                  <span
+                    className="file"
+                    title={r.cams[camB]}
+                    style={{
+                      flex: 1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {shorten(r.cams[camB])}
+                  </span>
                 </label>
               ))}
-              {usableRows.length === 0 && <div style={{ opacity: 0.7 }}>No selectable frames found</div>}
+              {usableRows.length === 0 && (
+                <div style={{ opacity: 0.7 }}>No selectable frames found</div>
+              )}
             </div>
           </section>
           <section className="col" style={{ gap: 8 }}>

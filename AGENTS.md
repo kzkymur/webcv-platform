@@ -85,27 +85,29 @@ Important
 - Keep TS wrapper names and C++ export names in sync. If you add a new C++ function, add a corresponding method in `wrapper.ts` and adjust types.
 - Known mismatch to fix if used: C++ function is `Transform` (capital T) while the wrapper calls `transform`. Align names before use.
 
-File artifacts (calibration outputs)
+File artifacts (layout)
 
-- Per‑camera calibration is saved as a single JSON file (intrinsics, distortion coeffs, optional per‑frame extrinsics):
-  - `2-calibrate-scenes/<runTs>_cam-<CamName>_calibration.json`
-  - Shape: `{ width, height, model, intrinsics3x3: number[9], distCoeffs: number[], frames?: { ts, rvec: number[3], tvec: number[3] }[] }`
-- Undistortion maps are stored as a single interleaved field: file type `remapXY`, extension `.xy`, path pattern:
-  - `2-calibrate-scenes/<runTs>_cam-<CamName>_remapXY.xy`
+- Shots (page 1): one trigger produces N files under a timestamped folder.
+  - `1-syncro-checkerboard_shots/<ts>/cam-<CamName>.rgb` — uint8, shape `[H, W, 4]` (stored RGBA)
+  - `1-syncro-checkerboard_shots/<ts>/cam-<CamName>.gray` — uint8, shape `[H, W, 4]` (grayscale stored as RGBA)
+  - Backward compatible read: legacy flat files `1-syncro-checkerboard_shots/<ts>_cam-<CamName>.(rgb|gray)` are still recognized with the same shapes.
+- Per‑camera calibration JSON (intrinsics, distortion coeffs, optional per‑frame extrinsics):
+  - `2-calibrate-scenes/<runTs>/cam-<CamName>_calibration.json`
+  - Fields/shapes: `{ width: number (W), height: number (H), model: string, intrinsics3x3: number[9] → [3,3], distCoeffs: number[N], frames?: { ts, rvec: number[3], tvec: number[3] }[] }`
+- Undistortion maps (interleaved XY), file type `remapXY`, extension `.xy`:
+  - `2-calibrate-scenes/<runTs>/cam-<CamName>_remapXY.xy` — float32, shape `[H, W, 2]` with interleaved `[sx, sy]` per pixel
   - Payload: Float32Array length `width * height * 2`, interleaved `[sx, sy]` in pixel units.
-- Inter‑camera mapping (undistorted domain) is saved as canonical pairs (no per‑frame `<ts>` files):
-  - Forward (A→B):
-    - `2-calibrate-scenes/<runTs>_cam-<A>_to_cam-<B>_H_undist.json`
-    - `2-calibrate-scenes/<runTs>_cam-<A>_to_cam-<B>_mappingXY.xy`
-  - Reverse (B→A):
-    - `2-calibrate-scenes/<runTs>_cam-<B>_to_cam-<A>_H_undist.json`
-    - `2-calibrate-scenes/<runTs>_cam-<B>_to_cam-<A>_mappingXY.xy`
-  - Selection policy: evaluate all candidate frames, choose the best based on highest inlier ratio (RANSAC in undistorted domain), then lowest RMSE (px) on inliers. The selected timestamp is recorded in the JSON as `metrics.selectedTs`. The `.xy` payload is Float32 interleaved `[sx, sy]` per destination pixel.
-  - Additionally, the pipeline emits a canonical best pair without `<ts>` based on inlier ratio (primary) and RMSE in pixels (secondary):
-    - `2-calibrate-scenes/<runTs>_cam-<A>_to_cam-<B>_H_undist.json`
-    - `2-calibrate-scenes/<runTs>_cam-<A>_to_cam-<B>_mappingXY.xy`
-    - The JSON embeds `{ metrics: { rmse, inliers, total, selectedTs } }`.
-- Preview: treat `remapXY` like optical flow for visualization; when needed, displacement can be shown as `(sx - x, sy - y)`.
+- Inter‑camera results (undistorted domain), canonical homographies (no per‑frame `<ts>` files):
+  - Forward (A→B): `2-calibrate-scenes/<runTs>/cam-<A>_to_cam-<B>_H_undist.json` — number[9] → `[3,3]`
+  - Reverse (B→A): `2-calibrate-scenes/<runTs>/cam-<B>_to_cam-<A>_H_undist.json` — number[9] → `[3,3]`
+  - Selection policy: evaluate all candidate frames, choose the best based on highest inlier ratio (RANSAC in undistorted domain), then lowest RMSE (px) on inliers. The selected timestamp is recorded in the JSON as `metrics.selectedTs`. The JSON embeds `{ metrics: { rmse, inliers, total, selectedTs } }`.
+- Realtime preview captures (page 3):
+  - Inter: `3-remap-realtime/<ts>/cam-<B>_to_cam-<A>_preview.rgb` — uint8, shape `[H, W, 3]`
+  - Undist only: `3-remap-realtime/<ts>/cam-<CamName>_undistorted_preview.rgb` — uint8, shape `[H, W, 3]`
+
+Notes: `H` and `W` are per‑camera image height/width (see `calibration.json`).
+
+Preview: treat `remapXY` like optical flow for visualization; when needed, displacement can be shown as `(sx - x, sy - y)`.
 
 ---
 

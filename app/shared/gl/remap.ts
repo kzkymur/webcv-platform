@@ -101,7 +101,10 @@ export class RemapRenderer {
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = (this.gl = createGL(canvas));
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0); // keep top-left origin for all uploads
+    // Flip Y on upload so that sampling with top-left–origin UVs matches
+    // the top-left–origin image/map data (HTMLVideoElement, Float32Array maps).
+    // This avoids a vertical inversion when rendering to the canvas.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
     this.prog = link(gl, VS, FS_REMAP);
@@ -137,6 +140,8 @@ export class RemapRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
+
+  // no orientation toggles in the original implementation
 
   setUndistMapXY(mapXY: Float32Array, size: RemapDims) {
     const gl = this.gl;
@@ -219,6 +224,7 @@ export class RemapRenderer {
     const locMapXY = gl.getUniformLocation(prog, "uMapXY");
     const locSrcSize = gl.getUniformLocation(prog, "uSrcSize");
     const locMapSrcSize = gl.getUniformLocation(prog, "uMapSrcSize");
+    
 
     // Pass 1: undistort (dest = undistSize, src = video)
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboUndist);

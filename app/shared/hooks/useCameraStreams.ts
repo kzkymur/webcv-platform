@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   readNamespacedStore,
   updateNamespacedStore,
@@ -47,25 +47,29 @@ export function useCameraIds(): [string[], (next: string[]) => void] {
 
 export function useCameraStream(deviceId?: string | null): MediaStream | null {
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [y16, setY16] = useState(false);
   const stopRef = useRef<null | (() => void)>(null);
 
-  // Observe per-camera Y16 flag from namespaced store
-  useEffect(() => {
-    const read = () => {
-      if (!deviceId) return setY16(false);
+  // Derive per-camera Y16 flag via a concurrent-safe subscription.
+  // This avoids setState during parent render warnings.
+  const y16 = useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window === "undefined") return () => {};
+      window.addEventListener("gw:ns:update", onStoreChange as EventListener);
+      return () =>
+        window.removeEventListener(
+          "gw:ns:update",
+          onStoreChange as EventListener
+        );
+    },
+    () => {
+      if (!deviceId || typeof window === "undefined") return false;
       const st = readNamespacedStore<{
         cameraOptions?: Record<string, { y16?: boolean }>;
       }>();
-      const flag = !!st.cameraOptions?.[deviceId]?.y16;
-      setY16(flag);
-    };
-    read();
-    const onUpdate = () => read();
-    window.addEventListener("gw:ns:update", onUpdate as EventListener);
-    return () =>
-      window.removeEventListener("gw:ns:update", onUpdate as EventListener);
-  }, [deviceId]);
+      return !!st.cameraOptions?.[deviceId]?.y16;
+    },
+    () => false
+  );
 
   useEffect(() => {
     let active = true;
@@ -78,23 +82,19 @@ export function useCameraStream(deviceId?: string | null): MediaStream | null {
         return;
       }
       try {
-        const baseVideo: MediaTrackConstraints = {
-          deviceId: { exact: deviceId } as any,
-        };
-        // Prefer 16:9 to avoid defaulting to 4:3 on some browsers
-        const prefer16x9: MediaTrackConstraints = {
-          aspectRatio: { ideal: 16 / 9 },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        };
+        // Ask for high resolution directly; browser negotiates the maximum.
         const s = await navigator.mediaDevices.getUserMedia({
-          video: { ...baseVideo, ...(prefer16x9 as any) },
+          video: {
+            deviceId: { exact: deviceId } as any,
+            width: { ideal: 4096 },
+            height: { ideal: 2160 },
+            aspectRatio: 16 / 9,
+          },
           audio: false,
         });
-        // Try enforcing aspect after capture when supported
         try {
           const vt = s.getVideoTracks()[0];
-          await vt.applyConstraints({ aspectRatio: 16 / 9 } as any);
+          await waitForLive(vt);
         } catch {}
         if (!active) {
           s.getTracks().forEach((t) => t.stop());
@@ -259,22 +259,7 @@ async function toY16ProcessedStream(
 }
 
 async function ensureProcessor(): Promise<any | null> {
-  if ((window as any).MediaStreamTrackProcessor)
-    return (window as any).MediaStreamTrackProcessor;
-  const url = "https://unpkg.com/mediastreamtrack-insertable@0.3.1";
-  try {
-    const dynImport = new Function("u", "return import(u)");
-    const mod: any = await (dynImport as any)(url);
-    return (
-      mod?.MediaStreamTrackProcessor ||
-      mod?.default ||
-      (window as any).MediaStreamTrackProcessor ||
-      null
-    );
-  } catch (e) {
-    console.warn("Processor dynamic import failed", e);
-    return (window as any).MediaStreamTrackProcessor || null;
-  }
+  return (window as any).MediaStreamTrackProcessor || null;
 }
 
 function waitForLive(track: MediaStreamTrack, timeoutMs = 3000): Promise<void> {

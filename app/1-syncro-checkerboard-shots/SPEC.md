@@ -5,4 +5,4 @@
   - 用途としては、主にチェッカーボードの撮影に使用されます。
   - その時点で最新の stream を直接 uint8array / uint16array 化して保存します。
   - ファイルシステムの選択イベントは受け取るが、このページでは選択ファイルのプレビュー表示は不要（Home のみプレビュー）。
-- 撮影された画像は 2. のファイルシステムに連携して保存されます。ファイル名は「1-syncro*checkerboard_shots/日時 + *((cam_1_name)|(cam_2_name)|…) 」の形式で 1 ファイル 1 画像なので、一度の撮影ボタンで n 枚のファイルが作成されます。cam_1_name はひとつ目に設定したカメラの名前で navigator navigator から取得できます
+- 撮影された画像は 2. のファイルシステムに連携して保存されます。保存先は `1-syncro-checkerboard_shots/<timestamp>/cam-<camera_name>.(rgb|gray)` のディレクトリ構成です（レガシー互換として `1-syncro-checkerboard_shots/<timestamp>_cam-<camera_name>` も読み込み対応）。
