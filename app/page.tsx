@@ -3,7 +3,7 @@
 export const dynamic = "error";
 
 import Sidebar from "@/components/Sidebar";
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { FileEntry } from "@/shared/db/types";
 
 export default function Page() {
@@ -61,6 +61,22 @@ export default function Page() {
                 </div>
               </div>
             </div>
+            <div className="panel">
+              <div className="col" style={{ gap: 6 }}>
+                <a href="/4-galvo-calibration">
+                  <b>4. Galvo Calibration</b>
+                </a>
+                <div style={{ opacity: 0.85, fontSize: 14 }}>
+                  Calibrate galvo XY to camera coordinates. Uses an
+                  undistorted live camera feed, drives the microcontroller to
+                  scan a grid (laser ON/OFF per step), detects laser spots via
+                  pixel diff, and solves a homography (OpenCV/WASM). Outputs
+                  frames under <code>4-galvo-calibration/&lt;ts&gt;/</code> and a
+                  homography JSON at
+                  <code>4-galvo-calibration/&lt;ts&gt;-homography.json</code>.
+                </div>
+              </div>
+            </div>
           </section>
           {activeFile && (
             <section>
@@ -74,9 +90,107 @@ export default function Page() {
 }
 
 function FilePreview({ file }: { file: FileEntry }) {
-  const [imgData, setImgData] = useState<ImageData | null>(null);
-  const [jsonText, setJsonText] = useState<string | null>(null);
-  const [jsonObj, setJsonObj] = useState<any | null>(null);
+  const { imgData, jsonText, jsonObj } = useMemo(() => {
+    if (!file) return { imgData: null, jsonText: null, jsonObj: null };
+
+    const isJson = file.path.toLowerCase().endsWith(".json");
+    if (isJson) {
+      try {
+        const raw = new TextDecoder("utf-8").decode(new Uint8Array(file.data));
+        try {
+          const parsed = JSON.parse(raw);
+          return { imgData: null, jsonText: JSON.stringify(parsed, null, 2), jsonObj: parsed };
+        } catch {
+          return { imgData: null, jsonText: raw, jsonObj: null };
+        }
+      } catch {
+        return { imgData: null, jsonText: "<unable to decode JSON file>", jsonObj: null };
+      }
+    }
+
+    // Vector field preview: optical-flow / remapXY as HSV color wheel
+    if (file.type === "optical-flow" || file.type === "remapXY") {
+      const w = file.width ?? 0;
+      const h = file.height ?? 0;
+      const n = w * h;
+      if (n === 0) return { imgData: null, jsonText: null, jsonObj: null };
+      const xy = new Float32Array(file.data);
+      if (xy.length !== n * 2) return { imgData: null, jsonText: null, jsonObj: null };
+      const rgba = new Uint8ClampedArray(n * 4);
+      const mags: number[] = new Array(n);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x;
+          const j = i * 2;
+          const vx = file.type === "remapXY" ? xy[j] - x : xy[j];
+          const vy = file.type === "remapXY" ? xy[j + 1] - y : xy[j + 1];
+          mags[i] = Math.hypot(vx, vy);
+        }
+      }
+      const sorted = mags.slice().sort((a, b) => a - b);
+      const max = sorted[Math.floor(sorted.length * 0.98)] || 1; // 98th percentile
+      function hsv2rgb(h: number, s: number, v: number) {
+        const c = v * s;
+        const hp = h / 60;
+        const x = c * (1 - Math.abs((hp % 2) - 1));
+        let r = 0, g = 0, b = 0;
+        if (hp >= 0 && hp < 1) { r = c; g = x; b = 0; }
+        else if (hp < 2) { r = x; g = c; b = 0; }
+        else if (hp < 3) { r = 0; g = c; b = x; }
+        else if (hp < 4) { r = 0; g = x; b = c; }
+        else if (hp < 5) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        const m = v - c;
+        return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+      }
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x;
+          const j = i * 2;
+          const vx = file.type === "remapXY" ? xy[j] - x : xy[j];
+          const vy = file.type === "remapXY" ? xy[j + 1] - y : xy[j + 1];
+          const ang = Math.atan2(vy, vx);
+          const deg = (ang * 180) / Math.PI;
+          const hue = (deg + 360) % 360;
+          const mag = Math.min(1, mags[i] / (max || 1));
+          const [r, g, b] = hsv2rgb(hue, 1, mag);
+          const k = i * 4;
+          rgba[k] = r as number;
+          rgba[k + 1] = g as number;
+          rgba[k + 2] = b as number;
+          rgba[k + 3] = 255;
+        }
+      }
+      return { imgData: new ImageData(rgba, w, h), jsonText: null, jsonObj: null };
+    }
+
+    // Image preview: RGBA/grayscale → RGBA ImageData
+    if (file.type === "rgb-image" || file.type === "grayscale-image") {
+      const w = file.width ?? 0;
+      const h = file.height ?? 0;
+      const u8 = new Uint8ClampedArray(file.data);
+      let rgba: Uint8ClampedArray;
+      if (file.type === "grayscale-image") {
+        if (file.channels === 4) {
+          rgba = u8;
+        } else {
+          const out = new Uint8ClampedArray(w * h * 4);
+          for (let i = 0; i < w * h; i++) {
+            const v = u8[i];
+            out[i * 4 + 0] = v;
+            out[i * 4 + 1] = v;
+            out[i * 4 + 2] = v;
+            out[i * 4 + 3] = 255;
+          }
+          rgba = out;
+        }
+      } else {
+        rgba = u8;
+      }
+      return { imgData: new ImageData(new Uint8ClampedArray(rgba), w, h), jsonText: null, jsonObj: null };
+    }
+    return { imgData: null, jsonText: null, jsonObj: null };
+  }, [file]);
 
   function shapeLabel(): string {
     // Binary types with width/height
@@ -125,154 +239,6 @@ function FilePreview({ file }: { file: FileEntry }) {
     return "(shape unknown)";
   }
 
-  useEffect(() => {
-    if (!file) return;
-
-    // JSON preview: pretty-print .json files
-    const isJson = file.path.toLowerCase().endsWith(".json");
-    if (isJson) {
-      try {
-        const raw = new TextDecoder("utf-8").decode(new Uint8Array(file.data));
-        try {
-          const parsed = JSON.parse(raw);
-          setJsonObj(parsed);
-          setJsonText(JSON.stringify(parsed, null, 2));
-        } catch {
-          // Not valid JSON? Show as plain text
-          setJsonText(raw);
-          setJsonObj(null);
-        }
-      } catch {
-        setJsonText("<unable to decode JSON file>");
-        setJsonObj(null);
-      }
-      setImgData(null);
-      return;
-    }
-
-    setJsonText(null);
-    setJsonObj(null);
-
-    // Vector field preview: optical-flow / remapXY as HSV color wheel
-    if (file.type === "optical-flow" || file.type === "remapXY") {
-      const w = file.width ?? 0;
-      const h = file.height ?? 0;
-      const n = w * h;
-      if (n === 0) {
-        setImgData(null);
-        return;
-      }
-      const xy = new Float32Array(file.data);
-      console.log(file.path);
-      console.log(xy);
-      if (xy.length !== n * 2) {
-        setImgData(null);
-        return;
-      }
-      const rgba = new Uint8ClampedArray(n * 4);
-      // Determine magnitude scale using a percentile to avoid outliers
-      const mags: number[] = new Array(n);
-      // For remapXY, visualize displacement (sx-x, sy-y); for optical-flow assume (u,v)
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const i = y * w + x;
-          const j = i * 2;
-          const vx = file.type === "remapXY" ? xy[j] - x : xy[j];
-          const vy = file.type === "remapXY" ? xy[j + 1] - y : xy[j + 1];
-          mags[i] = Math.hypot(vx, vy);
-        }
-      }
-      const sorted = mags.slice().sort((a, b) => a - b);
-      const max = sorted[Math.floor(sorted.length * 0.98)] || 1; // 98th percentile
-      // Map angle→hue, magnitude→value
-      function hsv2rgb(h: number, s: number, v: number) {
-        const c = v * s;
-        const hp = h / 60;
-        const x = c * (1 - Math.abs((hp % 2) - 1));
-        let r = 0,
-          g = 0,
-          b = 0;
-        if (hp >= 0 && hp < 1) {
-          r = c;
-          g = x;
-          b = 0;
-        } else if (hp < 2) {
-          r = x;
-          g = c;
-          b = 0;
-        } else if (hp < 3) {
-          r = 0;
-          g = c;
-          b = x;
-        } else if (hp < 4) {
-          r = 0;
-          g = x;
-          b = c;
-        } else if (hp < 5) {
-          r = x;
-          g = 0;
-          b = c;
-        } else {
-          r = c;
-          g = 0;
-          b = x;
-        }
-        const m = v - c;
-        return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
-      }
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const i = y * w + x;
-          const j = i * 2;
-          const vx = file.type === "remapXY" ? xy[j] - x : xy[j];
-          const vy = file.type === "remapXY" ? xy[j + 1] - y : xy[j + 1];
-          const ang = Math.atan2(vy, vx); // -pi..pi
-          const deg = (ang * 180) / Math.PI; // -180..180
-          const hue = (deg + 360) % 360; // 0..360
-          const mag = Math.min(1, mags[i] / (max || 1));
-          const [r, g, b] = hsv2rgb(hue, 1, mag);
-          const k = i * 4;
-          rgba[k + 0] = r;
-          rgba[k + 1] = g;
-          rgba[k + 2] = b;
-          rgba[k + 3] = 255;
-        }
-      }
-      setImgData(new ImageData(rgba, w, h));
-      return;
-    }
-
-    // Image preview: RGBA/grayscale → RGBA ImageData
-    if (file.type === "rgb-image" || file.type === "grayscale-image") {
-      const w = file.width ?? 0;
-      const h = file.height ?? 0;
-      const u8 = new Uint8ClampedArray(file.data);
-      let rgba: Uint8ClampedArray;
-      if (file.type === "grayscale-image") {
-        if (file.channels === 4) {
-          // Stored as RGBA grayscale already
-          rgba = u8;
-        } else {
-          // Stored as 1 channel; expand to RGBA
-          const out = new Uint8ClampedArray(w * h * 4);
-          for (let i = 0; i < w * h; i++) {
-            const v = u8[i];
-            out[i * 4 + 0] = v;
-            out[i * 4 + 1] = v;
-            out[i * 4 + 2] = v;
-            out[i * 4 + 3] = 255;
-          }
-          rgba = out;
-        }
-      } else {
-        rgba = u8;
-      }
-      // Ensure ImageData receives a fresh Uint8ClampedArray backed by ArrayBuffer
-      setImgData(new ImageData(new Uint8ClampedArray(rgba), w, h));
-    } else {
-      setImgData(null);
-    }
-  }, [file]);
 
   const header = (
     <div
@@ -317,7 +283,6 @@ function FilePreview({ file }: { file: FileEntry }) {
         <canvas
           width={imgData.width}
           height={imgData.height}
-          style={{ width: 640, height: "auto", display: "block" }}
           ref={(c) => {
             if (!c) return;
             const ctx = c.getContext("2d");

@@ -14,6 +14,8 @@ export default function FileSystemBrowser({
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // UI-only: selected folder highlight (not used for delete operations)
+  const [selectedDirs, setSelectedDirs] = useState<Set<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null); // last clicked file path (for shift)
   // viewer only; no import UI
   const [q, setQ] = useState("");
@@ -123,12 +125,49 @@ export default function FileSystemBrowser({
         }}
         activePath={active}
         selected={selected}
+        selectedDirs={selectedDirs}
+        onDirClick={(path, shiftKey, metaKey, ctrlKey) => {
+          const filesUnder = (dir: string) => {
+            const prefix = dir ? `${dir}/` : "";
+            return flat
+              .filter((f) => f.path === dir || f.path.startsWith(prefix))
+              .map((f) => f.path);
+          };
+
+          // Additive toggle with Cmd/Ctrl: multi-folder selection
+          if (metaKey || ctrlKey) {
+            const nextDirs = new Set(selectedDirs);
+            if (nextDirs.has(path)) nextDirs.delete(path); else nextDirs.add(path);
+            setSelectedDirs(nextDirs);
+            // Union all files from selected folders
+            const union = new Set<string>();
+            for (const d of nextDirs) for (const p of filesUnder(d)) union.add(p);
+            setSelected(union);
+            return;
+          }
+
+          // Shift+click: select this folder's files (replace)
+          if (shiftKey) {
+            const s = new Set<string>(filesUnder(path));
+            setSelected(s);
+            setSelectedDirs(new Set([path]));
+            // Keep active as-is to avoid changing preview unexpectedly
+            return;
+          }
+
+          // Otherwise toggle expand/collapse
+          const next = new Set(open);
+          if (next.has(path)) next.delete(path); else next.add(path);
+          setOpen(next);
+          // Do not modify selection on simple toggle
+        }}
         onFileClick={(path, shiftKey, metaKey, ctrlKey) => {
           // Additive toggle with Cmd/Ctrl
           if (metaKey || ctrlKey) {
             const s = new Set(selected);
             if (s.has(path)) s.delete(path); else s.add(path);
             setSelected(s);
+            setSelectedDirs(new Set());
             setActive(path);
             setAnchor(path);
             return;
@@ -145,6 +184,7 @@ export default function FileSystemBrowser({
               const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
               const s = new Set<string>(list.slice(lo, hi + 1));
               setSelected(s);
+              setSelectedDirs(new Set());
               setActive(path);
               return;
             }
@@ -153,6 +193,7 @@ export default function FileSystemBrowser({
           // Default: single select
           const s = new Set<string>([path]);
           setSelected(s);
+          setSelectedDirs(new Set());
           setActive(path);
           setAnchor(path);
         }}
@@ -241,6 +282,8 @@ function DirTree({
   onToggle,
   activePath,
   selected,
+  selectedDirs,
+  onDirClick,
   onFileClick,
   onSelect,
   filter,
@@ -251,6 +294,8 @@ function DirTree({
   onToggle: (p: string) => void;
   activePath: string | null;
   selected: Set<string>;
+  selectedDirs: Set<string>;
+  onDirClick: (p: string, shiftKey: boolean, metaKey: boolean, ctrlKey: boolean) => void;
   onFileClick: (p: string, shiftKey: boolean, metaKey: boolean, ctrlKey: boolean) => void;
   onSelect: (p: string) => void;
   filter: string;
@@ -286,22 +331,26 @@ function DirTree({
           return (
             <div
               key={node.path}
-              className="file"
-              style={{ display: "flex", alignItems: "center", paddingLeft: depth * 14 }}
+              className={`file ${selectedDirs.has(node.path) ? "selected" : ""}`}
+              style={{ display: "flex", alignItems: "center", paddingLeft: depth * 14, cursor: "pointer" }}
+              onClick={(e) => {
+                const ev = e as unknown as React.MouseEvent;
+                if (forcedOpen.has(node.path)) return; // ignore clicks on forced-open nodes
+                onDirClick(node.path, ev.shiftKey, ev.metaKey, ev.ctrlKey);
+              }}
+              title={node.path}
             >
               <span
-                style={{ width: 16, cursor: forcedOpen.has(node.path) ? "default" : "pointer" }}
-                onClick={() => !forcedOpen.has(node.path) && onToggle(node.path)}
+                style={{ width: 16 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!forcedOpen.has(node.path)) onToggle(node.path);
+                }}
               >
                 {isOpen ? "▾" : "▸"}
               </span>
               <span style={{ opacity: 0.85, marginRight: 6 }}>📁</span>
-              <span
-                style={{ cursor: forcedOpen.has(node.path) ? "default" : "pointer" }}
-                onClick={() => !forcedOpen.has(node.path) && onToggle(node.path)}
-              >
-                {node.name}
-              </span>
+              <span>{node.name}</span>
             </div>
           );
         }

@@ -4,6 +4,7 @@
   - カメラの内部・外部パラメータの算出と、カメラ間の位置合わせを行います。
   - UI は基本機能のファイルシステムに似た、画像ファイルを選択するマルチセレクト UI といくつかのオプションセレクトボックス（例：カメラモデル が fisheye か普通か）、実行ボタンが配置される
     - ユーザはマルチセレクト UI から複数のファイルペアを選択して実行ボタンを押す。
+    - 実行前プレビュー: 各カメラに対して「Original / Enhanced / Edges」の表示モードを切り替え、（任意で）コーナー検出のオーバーレイを表示できます。プレビューは軽量な CPU 実装（グレースケール + アンシャープ or Sobel）でダウンサンプリングして描画されます。
     - wasm で opencv を使用した計算が走り、それぞれのカメラの内部パラメータ・外部パラメータは 1 ファイル（例: `2-calibrate-scenes/<runTs>/cam-<name>_calibration.json`）として保存される。カメラ間の座標変換は同一平面上の射影変換（ホモグラフィ H）のみを JSON として保存する（`2-calibrate-scenes/<runTs>/cam-A_to_cam-B_H_undist.json`）。
     - OpenCV の remap により、それぞれのカメラの歪み補正 map は `2-calibrate-scenes/<runTs>/cam-<name>_remapXY.xy` に保存される（`.xy` は JSON に含めない）
     - カメラ間の画素レベルの密マッピング（`_mappingXY.xy`）は生成しない（H のみ、B 側の undist 座標系に統一）

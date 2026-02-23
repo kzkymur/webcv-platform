@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useCameraStream } from "@/shared/hooks/useCameraStreams";
+import { fitWithinBox } from "@/shared/util/fit";
 
 export type CaptureFormat = "rgba8" | "gray8"; // gray16 can be added when available
 
@@ -56,23 +57,20 @@ export default function CameraPreview({
     if (stream) v.play().catch(() => {});
   }, [stream]);
 
-  // Draw preview to visible canvas: width fixed (640), height adapts to aspect (no crop)
+  // Draw preview to visible canvas: fit within 640x640 box (no crop)
   useEffect(() => {
     let raf = 0;
     const v = videoRef.current;
     const c = canvasRef.current;
     const ctx = c?.getContext("2d");
     if (!v || !ctx || !c) return;
-    const W = 640;
+    const MAX = 640;
     const loop = () => {
       if (v.readyState >= 2) {
-        const vw = v.videoWidth || W;
+        const vw = v.videoWidth || MAX;
         const vh = v.videoHeight || 1;
-        const cssW = W;
-        const cssH = Math.max(1, Math.round((cssW * vh) / (vw || 1)));
-        c.style.width = `${cssW}px`;
-        c.style.height = "auto";
-        c.style.aspectRatio = `${vw}/${vh}`;
+        // CSS sizing handled globally; only adjust backing store to CSS size * DPR
+        const { w: cssW, h: cssH } = fitWithinBox(vw || MAX, vh || 1, MAX);
         const dpr = window.devicePixelRatio || 1;
         const bufW = Math.max(1, Math.round(cssW * dpr));
         const bufH = Math.max(1, Math.round(cssH * dpr));

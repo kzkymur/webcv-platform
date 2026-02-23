@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "component-refactoring": {
+      "source": "langgenius/dify",
+      "sourceType": "github",
+      "computedHash": "98d951503a52e094d701a15fedfe9448d1dffa7f50cc075c2e8483a3cb754c10"
+    },
+    "sequencer-integration": {
+      "source": "kzkymur/sequencer",
+      "sourceType": "github",
+      "computedHash": "b747eef195e395c274838902056d0c093127eef5f2bfbf370f3bff5c60e2cbcd"
+    }
+  }
+}

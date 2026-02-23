@@ -10,6 +10,7 @@ export default function Nav() {
           <Link href="/1-syncro-checkerboard-shots" style={{ marginRight: 12 }}>1. Syncro Checkerboard Shots</Link>
           <Link href="/2-calibrate-scenes" style={{ marginRight: 12 }}>2. Calibrate Scenes</Link>
           <Link href="/3-remap-realtime" style={{ marginRight: 12 }}>3. Remap Realtime</Link>
+          <Link href="/4-galvo-calibration" style={{ marginRight: 12 }}>4. Galvo Calibration</Link>
         </div>
       </div>
     </nav>

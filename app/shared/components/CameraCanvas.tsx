@@ -33,12 +33,15 @@ export default function CameraCanvas({
       if (v.readyState >= 2) {
         const vidW = v.videoWidth || lastSize.current.w;
         const vidH = v.videoHeight || lastSize.current.h;
-        const cssW = width;
-        const cssH = Math.max(1, Math.round((cssW * vidH) / (vidW || 1)));
-        // CSS sizing
-        c.style.width = `${cssW}px`;
-        c.style.height = "auto"; // auto height with aspect-ratio below
-        c.style.aspectRatio = `${vidW}/${vidH}`;
+        const MAX = 640;
+        const targetW = width; // requested nominal width cap
+        // Fit inside 640x640 while respecting requested width cap
+        const scaleCap = Math.min(MAX / (vidW || 1), MAX / (vidH || 1));
+        const scaleByWidth = targetW / (vidW || 1);
+        const scale = Math.min(scaleByWidth, scaleCap);
+        const cssW = Math.max(1, Math.round((vidW || 1) * scale));
+        const cssH = Math.max(1, Math.round((vidH || 1) * scale));
+        // CSS sizing handled globally (.canvasWrap > canvas); only adjust backing store
         // Backing store sizing (for HiDPI crispness)
         const dpr = (window.devicePixelRatio || 1);
         const bufW = Math.max(1, Math.round(cssW * dpr));

@@ -16,6 +16,7 @@ import {
   saveUndistortionMaps,
   computeAndSaveInterMapping,
 } from "@/shared/calibration/pipeline";
+import CheckerboardEnhancePreview from "@/shared/components/CheckerboardEnhancePreview";
 
 // moved: ShotKey type → @/shared/util/shots
 
@@ -234,6 +235,30 @@ export default function Page() {
       <main className="main">
         <div className="col" style={{ gap: 16 }}>
           <section className="col" style={{ gap: 8 }}>
+            <h4>Pre‑Detect Preview (per camera)</h4>
+            <div className="row" style={{ gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+              {camA && (
+                <CheckerboardEnhancePreview
+                  camName={camA}
+                  rows={rows}
+                  selectedTs={selectedTs}
+                  worker={workerRef.current}
+                />
+              )}
+              {camB && (
+                <CheckerboardEnhancePreview
+                  camName={camB}
+                  rows={rows}
+                  selectedTs={selectedTs}
+                  worker={workerRef.current}
+                />
+              )}
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              Tip: Switch frames and modes to verify the checkerboard pops before you run.
+            </div>
+          </section>
+          <section className="col" style={{ gap: 8 }}>
             <h4>Select Frames (from 1-syncro-checkerboard_shots)</h4>
             <div className="row" style={{ gap: 8, alignItems: "center" }}>
               <span style={{ opacity: 0.8 }}>Targets</span>
@@ -325,7 +350,7 @@ export default function Page() {
               {log}
             </pre>
           </section>
-          {/* No file preview on this page (Home only) */}
+          {/* Enhanced previews are shown above; no FS preview here */}
         </div>
       </main>
     </>

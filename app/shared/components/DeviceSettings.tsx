@@ -1,41 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentNamespace, updateNamespacedStore, readNamespacedStore } from "@/shared/module/loaclStorage";
 import { SerialCommunicator } from "@/shared/hardware/serial";
 
 type MediaDeviceInfoLite = Pick<MediaDeviceInfo, "deviceId" | "label" | "kind">;
 
-export default function DeviceSettings() {
-  // Ensure SSR and first client render match to avoid hydration warnings
-  const [isClient, setIsClient] = useState(false);
-  useEffect(() => setIsClient(true), []);
-
+function DeviceSettingsInner() {
   const [devices, setDevices] = useState<MediaDeviceInfoLite[]>([]);
-  const [cameraIds, setCameraIds] = useState<string[]>([]);
+  const [cameraIds, setCameraIds] = useState<string[]>(() => {
+    const st = readNamespacedStore<{ cameraIds?: string[]; webCamId?: string | null; thermalCamId?: string | null }>();
+    if (st.cameraIds && Array.isArray(st.cameraIds)) return st.cameraIds;
+    const legacy = [st.webCamId, st.thermalCamId].filter((v): v is string => !!v);
+    if (legacy.length > 0) updateNamespacedStore({ cameraIds: legacy });
+    return legacy;
+  });
   const [serial, setSerial] = useState<SerialCommunicator | null>(null);
   const [laserPct, setLaserPct] = useState(0);
   const [armed, setArmed] = useState(false);
-  const [cameraOpts, setCameraOpts] = useState<Record<string, { y16?: boolean }>>({});
-
-  // Initialize selects from namespaced store so UI reflects current state
-  useEffect(() => {
-    const st = readNamespacedStore<{ cameraIds?: string[]; webCamId?: string | null; thermalCamId?: string | null }>();
-    if (st.cameraIds && Array.isArray(st.cameraIds)) {
-      setCameraIds(st.cameraIds);
-    } else {
-      // Backward-compat: migrate legacy keys into a single list
-      const legacy = [st.webCamId, st.thermalCamId].filter((v): v is string => !!v);
-      setCameraIds(legacy);
-      if (legacy.length > 0) updateNamespacedStore({ cameraIds: legacy });
-    }
-  }, []);
-
-  // Load per-camera options on mount
-  useEffect(() => {
+  const [cameraOpts, setCameraOpts] = useState<Record<string, { y16?: boolean }>>(() => {
     const st = readNamespacedStore<{ cameraOptions?: Record<string, { y16?: boolean }> }>();
-    setCameraOpts(st.cameraOptions || {});
-  }, []);
+    return st.cameraOptions || {};
+  });
+  const didInit = useRef(false);
 
   // Helper to (re)enumerate cameras
   async function refreshDevices() {
@@ -46,25 +34,22 @@ export default function DeviceSettings() {
     } catch {}
   }
 
-  // Initial load + devicechange listener
+  // Single consolidated effect for init + persistence
   useEffect(() => {
-    refreshDevices();
-    const handler = () => refreshDevices();
-    navigator.mediaDevices?.addEventListener("devicechange", handler);
-    return () => navigator.mediaDevices?.removeEventListener("devicechange", handler);
-  }, []);
-
-  useEffect(() => {
+    if (!didInit.current) {
+      didInit.current = true;
+      refreshDevices();
+      const handler = () => refreshDevices();
+      navigator.mediaDevices?.addEventListener("devicechange", handler);
+      return () => navigator.mediaDevices?.removeEventListener("devicechange", handler);
+    }
     const ns = getCurrentNamespace();
     updateNamespacedStore({ cameraIds }, ns);
-  }, [cameraIds]);
-
-  useEffect(() => {
-    updateNamespacedStore({ cameraOptions: cameraOpts });
-  }, [cameraOpts]);
+    updateNamespacedStore({ cameraOptions: cameraOpts }, ns);
+  }, [cameraIds, cameraOpts]);
 
   // Compute feature support only after mount so SSR markup matches
-  const serialSupported = isClient && typeof navigator !== "undefined" && !!(navigator as any).serial;
+  const serialSupported = typeof navigator !== "undefined" && !!(navigator as any).serial;
   const needsCameraPermission = devices.length === 0 || devices.every((d) => !d.deviceId);
 
   async function requestCameraAccess() {
@@ -177,3 +162,7 @@ export default function DeviceSettings() {
     </div>
   );
 }
+
+// Export as client-only to avoid SSR/CSR mismatch without extra effects
+const DeviceSettings = dynamic(() => Promise.resolve(DeviceSettingsInner), { ssr: false });
+export default DeviceSettings;

@@ -26,5 +26,19 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 .tree .file { padding: 2px 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; }
 .tree .file.active { background: #5b9afe33; }
 .tree .file.selected { background: #5b9afe22; }
-.canvasWrap { border: 1px solid #3333; border-radius: 8px; display: inline-block; align-self: flex-start; width: fit-content; }
-.canvasWrap > canvas { display: block; }
+.canvasWrap { border: 1px solid #3333; border-radius: 8px; display: inline-block; align-self: flex-start; width: fit-content; position: relative; }
+.canvasWrap > canvas {
+  display: block;
+  /* Fit within 640x640 while preserving the canvas' intrinsic aspect ratio */
+  max-width: 640px;
+  max-height: 640px;
+  width: auto;
+  height: auto;
+}
+
+.canvasOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: block;
+}

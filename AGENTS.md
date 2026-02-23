@@ -129,6 +129,10 @@ Preview: treat `remapXY` like optical flow for visualization; when needed, displ
 - Linting uses ESLint with `@typescript-eslint`. Run a local lint pass before large refactors.
 - Keep rendering performant: memoize where helpful, avoid unnecessary effects, and reference the rules under `.agents/skills/vercel-react-best-practices/`.
 
+Sidebar File System behavior
+
+- Shift+click on a directory name selects all visible files within that directory (recursive). Selection respects the current filter text. Clicking the chevron still expands/collapses without affecting selection.
+
 Do not
 
 - Rename `loaclStorage.ts` or change public function names in the WASM wrapper without updating all references.
@@ -197,3 +201,7 @@ If you change public protocols (serial message formats, WASM APIs), document the
 - Next.js App Router is under `app/` with routes: `/`, `/calibration`, `/homography`, `/galvo`.
 - `next.config.mjs` sets `output: "export"`; run `pnpm run export` to generate a static site with multiple HTML files in `dist/`.
 - Client-only features (cameras, Web Serial) live in client components under `src/` and are safe for static export.
+
+## User Preferences
+
+- DON'T ABUSE `useEffect`. Refrain from using `useEffect` as much as possible.

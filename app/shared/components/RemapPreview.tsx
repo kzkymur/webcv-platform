@@ -250,10 +250,7 @@ export default function RemapPreview({
         <span style={{ opacity: 0.75 }}>FPS: {fps.toFixed(1)}</span>
       </div>
       <div className="canvasWrap">
-        <canvas
-          ref={canvasRef}
-          style={{ width: 640, height: "auto", display: "block" }}
-        />
+        <canvas ref={canvasRef} />
       </div>
       <video ref={videoRef} style={{ display: "none" }} />
       <div style={{ fontSize: 12, opacity: 0.75 }}>
