@@ -77,6 +77,21 @@ export default function Page() {
                 </div>
               </div>
             </div>
+            <div className="panel">
+              <div className="col" style={{ gap: 6 }}>
+                <a href="/5-laser-manual-operation">
+                  <b>5. Laser Manual Operation</b>
+                </a>
+                <div style={{ opacity: 0.85, fontSize: 14 }}>
+                  Manually drive the galvo and laser using a live, undistorted
+                  camera preview. Select a per‑camera undistortion map and a
+                  homography from galvo→camera (from step 4). When “Galvo Sync”
+                  is enabled, clicking on the canvas maps that pixel to galvo
+                  coordinates and moves the mirrors; adjust laser power with the
+                  percentage control (0–100).
+                </div>
+              </div>
+            </div>
           </section>
           {activeFile && (
             <section>

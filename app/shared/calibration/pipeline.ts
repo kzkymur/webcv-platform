@@ -2,6 +2,8 @@ import { WasmWorkerClient } from "@/shared/wasm/client";
 import { getFile, putFile } from "@/shared/db";
 import { fileToRGBA, jsonFile, remapFile, remapXYFile } from "@/shared/util/fileEntry";
 import { sanitize } from "@/shared/util/strings";
+import { applyPostOpsRgbaViaGray } from "@/shared/image/postprocess";
+import { getPostOpsForCam } from "@/shared/calibration/postprocessConfig";
 
 export type CameraModel = "normal" | "fisheye";
 
@@ -23,6 +25,9 @@ export async function detectCornersForRows(
 ) {
   const detA: Det[] = [];
   const detB: Det[] = [];
+  // Read per-camera postprocess stacks once per run
+  const opsA = getPostOpsForCam(camA);
+  const opsB = getPostOpsForCam(camB);
   for (const r of rows) {
     for (const cam of [camA, camB]) {
       const path = r.cams[cam];
@@ -30,7 +35,9 @@ export async function detectCornersForRows(
       const fe = await getFile(path);
       if (!fe) continue;
       const { rgba, width, height } = fileToRGBA(fe);
-      const res = await wrk.cvFindChessboardCorners(rgba, width, height);
+      const ops = cam === camA ? opsA : opsB;
+      const detRgba = ops.length ? applyPostOpsRgbaViaGray(rgba, width, height, ops) : rgba;
+      const res = await wrk.cvFindChessboardCorners(detRgba, width, height);
       if (!res.found) {
         log(`× Corner detection failed: ${r.ts} cam=${cam}`);
         continue;
@@ -193,3 +200,5 @@ export async function computeAndSaveInterMapping(
   }
   return saved;
 }
+
+// (no local helpers; use shared image/postprocess)

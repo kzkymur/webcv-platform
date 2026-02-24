@@ -1,0 +1,8 @@
+- 5. ガルバノスキャナ・レーザーの手動操作機能
+  - TypeScript と Web Serial API で実装
+  - パス：/5-laser-manual-operation
+  - remap と homography ファイルから、Web カメラ画像の任意位置をガルバノスキャナの座標に変換可能になる。
+  - UI はカメラ選択 UI と remap ファイル選択 UI から Canvas
+  - Canvas には remap した Web カメラの映像を表示する。
+  - 投影している canvas の上に「ガルバノ同期」トルグを設置し、それが ON の場合にユーザが canvas 上の任意の場所をタップすると、ガルバノの座標が変わる
+  - また、レーザーの出力を調整するスライダーも canvas 横に設置する

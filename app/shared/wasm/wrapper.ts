@@ -181,7 +181,7 @@ export default class ModuleWrapper {
     dest: F32AP
   ): null {
     return this.module.ccall(
-      "transform",
+      "Transform",
       null,
       ["number", "number", "number", "number", "number", "number"],
       [x, y, homography, cameraMat, distCoeffs, dest]

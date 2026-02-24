@@ -255,7 +255,7 @@ export default function Page() {
               )}
             </div>
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              Tip: Switch frames and modes to verify the checkerboard pops before you run.
+              Tip: Choose a frame and tweak settings (contrast / invert) so the checkerboard pops before you run.
             </div>
           </section>
           <section className="col" style={{ gap: 8 }}>

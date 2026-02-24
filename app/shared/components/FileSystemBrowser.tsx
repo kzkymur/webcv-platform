@@ -5,6 +5,7 @@ import type React from "react";
 import { deleteFile, deleteMany, getFile, listFiles } from "@/shared/db";
 import { FileEntry } from "@/shared/db/types";
 import { buildTree, TreeNode } from "@/shared/util/tree";
+import { usePrefs } from "@/shared/store/prefs";
 
 export default function FileSystemBrowser({
   onSelect,
@@ -42,14 +43,18 @@ export default function FileSystemBrowser({
     return map;
   }, [flat]);
 
-  // Tree open/close state
-  const [open, setOpen] = useState<Set<string>>(new Set());
-  // Initialize default-open top-level folders when tree changes
+  // Open/close state persisted via prefs store (Zustand + namespaced localStorage)
+  const fsOpenDirs = usePrefs((s) => s.fsOpenDirs);
+  const setFsOpenDirs = usePrefs((s) => s.setFsOpenDirs);
+  const toggleFsDir = usePrefs((s) => s.toggleFsDir);
+  const hydrateFsOpenDirs = usePrefs((s) => s.hydrateFsOpenDirs);
+  const open = useMemo(() => new Set(fsOpenDirs), [fsOpenDirs]);
+  // Initialize default-open top-level directories only if empty
   useEffect(() => {
     if (open.size === 0 && tree.length > 0) {
-      const s = new Set<string>();
-      for (const n of tree) if (n.isDir) s.add(n.path);
-      setOpen(s);
+      const defaults: string[] = [];
+      for (const n of tree) if (n.isDir) defaults.push(n.path);
+      hydrateFsOpenDirs(defaults);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tree]);
@@ -105,12 +110,12 @@ export default function FileSystemBrowser({
               }
             }
             walk(tree);
-            setOpen(s);
+            setFsOpenDirs(s);
           }}
         >
           Expand All
         </button>
-        <button onClick={() => setOpen(new Set())}>Collapse All</button>
+        <button onClick={() => setFsOpenDirs(new Set())}>Collapse All</button>
         <button onClick={refresh}>Reload</button>
       </div>
       <DirTree
@@ -118,10 +123,7 @@ export default function FileSystemBrowser({
         open={open}
         forcedOpen={forcedOpen}
         onToggle={(p) => {
-          const next = new Set(open);
-          if (next.has(p)) next.delete(p);
-          else next.add(p);
-          setOpen(next);
+          toggleFsDir(p);
         }}
         activePath={active}
         selected={selected}
@@ -156,9 +158,7 @@ export default function FileSystemBrowser({
           }
 
           // Otherwise toggle expand/collapse
-          const next = new Set(open);
-          if (next.has(path)) next.delete(path); else next.add(path);
-          setOpen(next);
+          toggleFsDir(path);
           // Do not modify selection on simple toggle
         }}
         onFileClick={(path, shiftKey, metaKey, ctrlKey) => {

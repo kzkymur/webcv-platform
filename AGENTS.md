@@ -158,7 +158,14 @@ Add a new Node UI block
 
 Persist structured UI state
 
-- Use the namespaced helpers in `src/module/loaclStorage.ts` (`updateNamespacedStore`, `getCurrentNamespace`, etc.).
+- Use the namespaced helpers in `app/shared/module/loaclStorage.ts` (`updateNamespacedStore`, `getCurrentNamespace`, etc.).
+- Calibration postprocess config (per camera):
+  - Store under `calibPostOpsByCam: Record<string, PostProcessOp[]>`.
+  - Optional global fallback `calibPostOps: PostProcessOp[]`.
+  - `PostProcessOp` (TS union):
+    - `{ type: "contrast"; slope: number }` with `slope` in `[0,3]` (1 = no-op)
+    - `{ type: "invert" }`
+  - Order matters. Enforce `contrast` precedes `invert`.
 
 ---
 
@@ -205,3 +212,11 @@ If you change public protocols (serial message formats, WASM APIs), document the
 ## User Preferences
 
 - DON'T ABUSE `useEffect`. Refrain from using `useEffect` as much as possible.
+- Pursue the appropriate abstraction and commonality of logic, and the pure functionalization with extremely few side effects.
+- Group common functions in the shared directory.
+- Page-specific logic that cannot be generalized should be appropriately divided by function and organized into separate files within each page directory.
+- KEEP SPEC.md file updated. All SPEC.md file having the latest information is requirement. After every tasks, do update them properly.
+- SMALL is always the best. Keep everything small.
+- Don't worry about backward compatibility. This project is absolutely not a business.
+- SMALL is always the best. Keep everything small.
+- Don't worry about backward compatibility. This project is absolutely not a business.

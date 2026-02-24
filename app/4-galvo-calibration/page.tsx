@@ -4,29 +4,22 @@ export const dynamic = "error";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import { getFile, listFiles, putFile } from "@/shared/db";
+import { listFiles, putFile } from "@/shared/db";
 import type { FileEntry } from "@/shared/db/types";
 import { SerialCommunicator } from "@/shared/hardware/serial";
-import { RemapRenderer } from "@/shared/gl/remap";
-import { useCameraIds, useCameraStream } from "@/shared/hooks/useCameraStreams";
+import { useCameraIds } from "@/shared/hooks/useCameraStreams";
 import { formatTimestamp } from "@/shared/util/time";
 import { WasmWorkerClient } from "@/shared/wasm/client";
+import HeaderBar from "@/shared/components/GalvoCalibrationHeaderBar";
+import UndistList from "@/shared/components/GalvoCalibrationUndistList";
+import { Preview, type PreviewHandle } from "@/shared/components/GalvoCalibrationPreview";
+import RunPanel from "@/shared/components/GalvoCalibrationRunPanel";
+import LogPanel from "@/shared/components/GalvoCalibrationLogPanel";
+import type { GridParams, Range, Timing, UndistItem } from "@/shared/calibration/galvoTypes";
 
-type UndistItem = {
-  runTs: string;
-  cam: string; // single camera undistortion map
-  mapXYPath: string;
-};
+// Shared types are in app/shared/calibration/galvoTypes
 
-async function loadRemapXY(
-  path: string
-): Promise<{ xy: Float32Array; width: number; height: number } | null> {
-  const f = await getFile(path);
-  if (!f || f.type !== "remapXY" || !f.width || !f.height) return null;
-  const xy = new Float32Array(f.data);
-  if (xy.length !== f.width * f.height * 2) return null;
-  return { xy, width: f.width, height: f.height };
-}
+// loadRemapXY and identity inter-map shared via app/shared/util/remap
 
 export default function Page() {
   const [items, setItems] = useState<UndistItem[]>([]);
@@ -38,17 +31,9 @@ export default function Page() {
 
   // Camera device selection
   const [camIds] = useCameraIds();
-  const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>(
-    []
-  );
+  const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>([]);
   const [deviceId, setDeviceId] = useState<string>("");
-  const stream = useCameraStream(deviceId);
-
-  // GL renderer (undist pass + identity pass) + overlay
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const rendererRef = useRef<RemapRenderer | null>(null);
+  const previewRef = useRef<PreviewHandle | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
   const spotsRef = useRef<{ pts: { x: number; y: number }[]; last: { x: number; y: number } | null }>({ pts: [], last: null });
 
@@ -75,7 +60,6 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState("");
   const [fps, setFps] = useState(0);
-  const rafRef = useRef<number>(0);
   const cancelRef = useRef<boolean>(false);
 
   const workerRef = useRef<WasmWorkerClient | null>(null);
@@ -110,96 +94,10 @@ export default function Page() {
     };
   }, [camIds]);
 
-  // Wire stream to hidden <video>
+  // Reset overlay when undistortion map selection changes
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.srcObject = stream || null;
-    if (stream) v.play().catch(() => {});
-  }, [stream]);
-
-  // Init renderer on mount
-  useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const r = new RemapRenderer(c);
-    rendererRef.current = r;
-    return () => {
-      try {
-        r.dispose();
-      } catch {}
-      rendererRef.current = null;
-    };
-  }, []);
-
-  // Push video to renderer
-  useEffect(() => {
-    const r = rendererRef.current;
-    if (!r) return;
-    r.setSourceVideo(videoRef.current || null);
-  }, [rendererRef.current, stream]);
-
-  // Load undist map and set identity inter map on selection
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const r = rendererRef.current;
-      if (!r || !selected) return;
-      const u = await loadRemapXY(selected.mapXYPath);
-      if (!u || cancelled) return;
-      r.setUndistMapXY(u.xy, { width: u.width, height: u.height });
-      const id = new Float32Array(u.width * u.height * 2);
-      let idx = 0;
-      for (let y = 0; y < u.height; y++) {
-        for (let x = 0; x < u.width; x++) {
-          id[idx++] = x;
-          id[idx++] = y;
-        }
-      }
-      r.setInterMapXY(id, { width: u.width, height: u.height });
-      // reset overlay when selection changes
-      spotsRef.current = { pts: [], last: null };
-    })();
-    return () => {
-      cancelled = true;
-    };
+    spotsRef.current = { pts: [], last: null };
   }, [selKey]);
-
-  // Render loop
-  useEffect(() => {
-    let mounted = true;
-    let lastT = performance.now();
-    let frames = 0;
-    const loop = () => {
-      const r = rendererRef.current;
-      if (!mounted) return;
-      if (r) r.render();
-      drawOverlay();
-      frames++;
-      const now = performance.now();
-      if (now - lastT >= 500) {
-        setFps((frames * 1000) / (now - lastT));
-        frames = 0;
-        lastT = now;
-      }
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-    return () => {
-      mounted = false;
-      cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  // Clear overlay when toggled off
-  useEffect(() => {
-    const can = overlayCanvasRef.current;
-    if (!can) return;
-    if (!showOverlay) {
-      const ctx = can.getContext("2d");
-      if (ctx) ctx.clearRect(0, 0, can.width, can.height);
-    }
-  }, [showOverlay]);
 
   // Discover undistortion maps
   useEffect(() => {
@@ -219,59 +117,7 @@ export default function Page() {
     })();
   }, []);
 
-  async function captureFrame(): Promise<{ rgba: Uint8Array; width: number; height: number } | null> {
-    const r = rendererRef.current;
-    if (!r) return null;
-    const rgba = r.readPixels();
-    const size = r.getOutputSize();
-    if (!size) return null;
-    return { rgba, width: size.width, height: size.height };
-  }
-
-  function drawOverlay() {
-    if (!showOverlay) return;
-    const r = rendererRef.current;
-    const can = overlayCanvasRef.current;
-    if (!r || !can) return;
-    const size = r.getOutputSize();
-    if (!size) return;
-    if (can.width !== size.width || can.height !== size.height) {
-      can.width = size.width;
-      can.height = size.height;
-    }
-    const ctx = can.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, can.width, can.height);
-    const pts = spotsRef.current.pts;
-    // Draw accumulated points
-    ctx.save();
-    ctx.fillStyle = "rgba(0,255,0,0.7)";
-    for (const p of pts) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    // Highlight last point
-    const last = spotsRef.current.last;
-    if (last) {
-      ctx.strokeStyle = "rgba(255,80,80,0.95)";
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(last.x, last.y, 7, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    // Counter
-    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    const txt = `${pts.length}/${grid.nx * grid.ny}`;
-    const pad = 4;
-    const w = ctx.measureText(txt).width + pad * 2;
-    const h = 16;
-    ctx.fillRect(8, 8, w, h);
-    ctx.fillStyle = "#eaeaea";
-    ctx.fillText(txt, 8 + pad, 8 + 12);
-    ctx.restore();
-  }
+  // captureFrame now lives in <Preview /> via ref
 
   function buildGrid(): { x: number; y: number }[] {
     const list: { x: number; y: number }[] = [];
@@ -349,7 +195,7 @@ export default function Page() {
     appendLog(`Run ${ts} — grid ${grid.nx}×${grid.ny}, laser ${laserPct}%`);
 
     // Acquire baseline screen frame (undistorted)
-    const base = await captureFrame();
+    const base = await previewRef.current?.captureFrame();
     if (!base) {
       appendLog("No camera frame available.");
       setBusy(false);
@@ -393,7 +239,7 @@ export default function Page() {
       }
       await sleep(timing.onMs);
 
-      const shot = await captureFrame();
+      const shot = await previewRef.current?.captureFrame();
       // Laser OFF asap
       try {
         await serial.setLaserOutput(0);
@@ -469,259 +315,73 @@ export default function Page() {
   return (
     <>
       <Sidebar />
-      <header className="header">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <b>4. Galvo Calibration</b>
-          <div className="row" style={{ gap: 12, alignItems: "center" }}>
-            <label className="row" style={{ gap: 6 }}>
-              Source Camera
-              <select
-                value={deviceId}
-                onChange={(e) => setDeviceId(e.target.value)}
-                disabled={devices.length === 0}
-              >
-                <option value="">(unselected)</option>
-                {devices.map((d) => (
-                  <option key={d.deviceId} value={d.deviceId}>
-                    {d.label || d.deviceId}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span style={{ opacity: 0.75 }}>
-              Expecting: <code>{selected?.cam || "-"}</code>
-            </span>
-            <button
-              onClick={async () => {
-                if (serialOk) return;
-                const s = new SerialCommunicator();
-                const ok = await s.connect();
-                if (ok) {
-                  setSerial(s);
-                  setSerialOk(true);
-                } else {
-                  try { await s.disconnect(); } catch {}
-                  setSerial(null);
-                  setSerialOk(false);
-                }
-              }}
-              disabled={serialOk}
-            >
-              {serialOk ? "Connected" : "Connect Microcontroller"}
-            </button>
-            {serialOk && (
-              <button
-                onClick={async () => {
-                  try { await serial?.disconnect(); } catch {}
-                  setSerial(null);
-                  setSerialOk(false);
-                }}
-              >
-                Disconnect
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
+      <HeaderBar
+        title="4. Galvo Calibration"
+        devices={devices}
+        deviceId={deviceId}
+        setDeviceId={setDeviceId}
+        expectedCam={selected?.cam}
+        serialOk={serialOk}
+        onConnect={async () => {
+          if (serialOk) return;
+          const s = new SerialCommunicator();
+          const ok = await s.connect();
+          if (ok) {
+            setSerial(s);
+            setSerialOk(true);
+          } else {
+            try { await s.disconnect(); } catch {}
+            setSerial(null);
+            setSerialOk(false);
+          }
+        }}
+        onDisconnect={async () => {
+          try { await serial?.disconnect(); } catch {}
+          setSerial(null);
+          setSerialOk(false);
+        }}
+        fps={fps}
+      />
       <main className="main">
         <div className="col" style={{ gap: 16 }}>
-          <section className="col" style={{ gap: 8 }}>
-            <h4>Undistortion Map (Select one)</h4>
-            <div className="tree" style={{ maxHeight: 220, overflow: "auto" }}>
-              {items.map((p) => (
-                <div
-                  key={p.mapXYPath}
-                  className={`file ${p.mapXYPath === selKey ? "active" : ""}`}
-                  style={{ display: "flex", gap: 8, alignItems: "center" }}
-                  onClick={() => setSelKey(p.mapXYPath)}
-                  title={p.mapXYPath}
-                >
-                  <span style={{ width: 220, fontFamily: "monospace" }}>{p.runTs}</span>
-                  <span>Undistort: {p.cam}</span>
-                </div>
-              ))}
-              {items.length === 0 && (
-                <div style={{ opacity: 0.7 }}>No undistortion maps found (generate in /2).</div>
-              )}
-            </div>
-            {selected && (
-              <div style={{ opacity: 0.8, fontSize: 13 }}>XY: {selected.mapXYPath}</div>
-            )}
-          </section>
+          <UndistList items={items} selKey={selKey} onSelect={setSelKey} selected={selected} />
 
-          <section className="col" style={{ gap: 8 }}>
-            <h4>Preview (undistorted)</h4>
-            <div className="row" style={{ gap: 12, alignItems: "center" }}>
-              <button
-                onClick={async () => {
-                  const f = await captureFrame();
-                  if (!f) return;
-                  const ts = formatTimestamp(new Date());
-                  const path = `4-galvo-calibration/${ts}/manual-preview.rgb`;
-                  await putFile({ path, type: "rgb-image", data: f.rgba.buffer as ArrayBuffer, width: f.width, height: f.height, channels: 4 });
-                  alert(`Saved: ${path}`);
-                }}
-                disabled={!selected}
-              >
-                Save Frame
-              </button>
-              <span style={{ opacity: 0.75 }}>FPS: {fps.toFixed(1)}</span>
-              <label className="row" style={{ gap: 6 }}>
-                <input type="checkbox" checked={showOverlay} onChange={(e) => setShowOverlay(e.target.checked)} />
-                Show overlay
-              </label>
-              <button onClick={() => (spotsRef.current = { pts: [], last: null })} disabled={!showOverlay}>
-                Clear overlay
-              </button>
-            </div>
-            <div className="canvasWrap">
-              <canvas ref={canvasRef} />
-              <canvas ref={overlayCanvasRef} className="canvasOverlay" />
-            </div>
-            <video ref={videoRef} style={{ display: "none" }} />
-          </section>
+          <Preview
+            ref={previewRef}
+            deviceId={deviceId}
+            selected={selected}
+            grid={grid}
+            showOverlay={showOverlay}
+            setShowOverlay={setShowOverlay}
+            spots={spotsRef.current.pts}
+            last={spotsRef.current.last}
+            onClearOverlay={() => {
+              spotsRef.current = { pts: [], last: null };
+            }}
+            onFps={setFps}
+          />
 
-          <section className="col" style={{ gap: 8 }}>
-            <h4>Run Calibration</h4>
-            <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
-              <label className="row" style={{ gap: 6 }}>
-                Grid X
-                <input
-                  type="number"
-                  min={2}
-                  max={64}
-                  value={grid.nx}
-                  onChange={(e) => setGrid({ ...grid, nx: Math.max(2, Math.min(64, Number(e.target.value) | 0)) })}
-                  style={{ width: 70 }}
-                />
-              </label>
-              <label className="row" style={{ gap: 6 }}>
-                Grid Y
-                <input
-                  type="number"
-                  min={2}
-                  max={64}
-                  value={grid.ny}
-                  onChange={(e) => setGrid({ ...grid, ny: Math.max(2, Math.min(64, Number(e.target.value) | 0)) })}
-                  style={{ width: 70 }}
-                />
-              </label>
-              <label className="row" style={{ gap: 6 }}>
-                X min
-                <input
-                  type="number"
-                  min={0}
-                  max={65535}
-                  value={xRange.min}
-                  onChange={(e) => setXRange({ ...xRange, min: Math.max(0, Math.min(65535, Number(e.target.value) | 0)) })}
-                  style={{ width: 90 }}
-                />
-              </label>
-              <label className="row" style={{ gap: 6 }}>
-                X max
-                <input
-                  type="number"
-                  min={0}
-                  max={65535}
-                  value={xRange.max}
-                  onChange={(e) => setXRange({ ...xRange, max: Math.max(0, Math.min(65535, Number(e.target.value) | 0)) })}
-                  style={{ width: 90 }}
-                />
-              </label>
-              <label className="row" style={{ gap: 6 }}>
-                Y min
-                <input
-                  type="number"
-                  min={0}
-                  max={65535}
-                  value={yRange.min}
-                  onChange={(e) => setYRange({ ...yRange, min: Math.max(0, Math.min(65535, Number(e.target.value) | 0)) })}
-                  style={{ width: 90 }}
-                />
-              </label>
-              <label className="row" style={{ gap: 6 }}>
-                Y max
-                <input
-                  type="number"
-                  min={0}
-                  max={65535}
-                  value={yRange.max}
-                  onChange={(e) => setYRange({ ...yRange, max: Math.max(0, Math.min(65535, Number(e.target.value) | 0)) })}
-                  style={{ width: 90 }}
-                />
-              </label>
-              <label className="row" style={{ gap: 6 }}>
-                Laser (%)
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={laserPct}
-                  onChange={(e) => setLaserPct(Math.max(0, Math.min(100, Number(e.target.value) | 0)))}
-                  style={{ width: 70 }}
-                />
-              </label>
-              <label className="row" style={{ gap: 6 }}>
-                Laser ON (ms)
-                <input
-                  type="number"
-                  min={10}
-                  max={2000}
-                  value={timing.onMs}
-                  onChange={(e) => setTiming({ ...timing, onMs: Math.max(10, Math.min(2000, Number(e.target.value) | 0)) })}
-                  style={{ width: 90 }}
-                />
-              </label>
-              <label className="row" style={{ gap: 6 }}>
-                After OFF wait (ms)
-                <input
-                  type="number"
-                  min={0}
-                  max={2000}
-                  value={timing.offMs}
-                  onChange={(e) => setTiming({ ...timing, offMs: Math.max(0, Math.min(2000, Number(e.target.value) | 0)) })}
-                  style={{ width: 110 }}
-                />
-              </label>
-            </div>
-            <div className="row" style={{ gap: 8 }}>
-              <button
-                onClick={runCalibration}
-                disabled={busy || !selected || !serialOk}
-                title={!serialOk ? "Connect Microcontroller first" : undefined}
-              >
-                {busy ? "Running…" : "Start"}
-              </button>
-              {busy && (
-                <button
-                  onClick={() => {
-                    cancelRef.current = true;
-                    appendLog("Cancel requested; finishing current step…");
-                  }}
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-          </section>
+          <RunPanel
+            grid={grid}
+            setGrid={setGrid}
+            xRange={xRange}
+            setXRange={setXRange}
+            yRange={yRange}
+            setYRange={setYRange}
+            laserPct={laserPct}
+            setLaserPct={setLaserPct}
+            timing={timing}
+            setTiming={setTiming}
+            busy={busy}
+            canRun={!!selected && serialOk}
+            onStart={runCalibration}
+            onCancel={() => {
+              cancelRef.current = true;
+              appendLog("Cancel requested; finishing current step…");
+            }}
+          />
 
-          <section className="col" style={{ gap: 8 }}>
-            <h4>Log</h4>
-            <pre
-              style={{
-                minHeight: 120,
-                maxHeight: 240,
-                overflow: "auto",
-                background: "#111",
-                color: "#eaeaea",
-                padding: 8,
-                borderRadius: 4,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {log}
-            </pre>
-          </section>
+          <LogPanel log={log} />
         </div>
       </main>
     </>

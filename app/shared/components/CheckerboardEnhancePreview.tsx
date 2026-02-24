@@ -5,14 +5,15 @@ import { getFile } from "@/shared/db";
 import { fileToRGBA } from "@/shared/util/fileEntry";
 import type { FileEntry } from "@/shared/db/types";
 import type { WasmWorkerClient } from "@/shared/wasm/client";
-import { readNamespacedStore, updateNamespacedStore } from "@/shared/module/loaclStorage";
+// storage helpers are encapsulated in postprocessConfig
+import { applyPostOpsGray, applyPostOpsRgbaViaGray } from "@/shared/image/postprocess";
+import { getPostOpsForCam, setContrastForCam, setOpsForCam } from "@/shared/calibration/postprocessConfig";
 
 export type ShotRow = {
   ts: string;
   cams: Record<string, string>;
 };
 
-type Mode = "original" | "enhanced" | "edges";
 
 export default function CheckerboardEnhancePreview({
   camName,
@@ -26,16 +27,16 @@ export default function CheckerboardEnhancePreview({
   worker: WasmWorkerClient | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [mode, setMode] = useState<Mode>("enhanced");
   const [ts, setTs] = useState<string>("");
   const [found, setFound] = useState<boolean | null>(null);
   const [showCorners, setShowCorners] = useState<boolean>(true);
   const [busyDetect, setBusyDetect] = useState(false);
-  // Shared across previews via namespaced store so both sliders stay in sync
+  const [ops, setOps] = useState(() => getPostOpsForCam(camName));
+  // Per-camera contrast tuning (persisted per namespace)
   const [enhanceAmt, setEnhanceAmt] = useState<number>(() => {
-    const st = readNamespacedStore<{ calibPreviewEnhance?: number }>();
-    const v = Number(st.calibPreviewEnhance);
-    return Number.isFinite(v) ? Math.max(0, Math.min(3, v)) : 1.0;
+    const ops = getPostOpsForCam(camName);
+    const c = ops.find((o) => o.type === "contrast") as any;
+    return c ? Math.max(0, Math.min(3, Number(c.slope) || 1)) : 1.0;
   });
 
   const camRows = useMemo(() => rows.filter((r) => !!r.cams[camName]), [rows, camName]);
@@ -82,15 +83,7 @@ export default function CheckerboardEnhancePreview({
           gray[y * pW + x] = (0.299 * r + 0.587 * g + 0.114 * b) | 0;
         }
       }
-
-      let outGray: Uint8ClampedArray;
-      if (mode === "original") {
-        outGray = gray;
-      } else if (mode === "edges") {
-        outGray = sobelEdges(gray, pW, pH);
-      } else {
-        outGray = unsharp(gray, pW, pH, enhanceAmt);
-      }
+      const outGray = applyPostOpsGray(gray, pW, pH, ops);
 
       // Pack RGBA
       const out = new Uint8ClampedArray(pW * pH * 4);
@@ -112,7 +105,9 @@ export default function CheckerboardEnhancePreview({
       if (showCorners && worker) {
         setBusyDetect(true);
         try {
-          const res = await worker.cvFindChessboardCorners(rgba, width, height);
+          // Always apply configured postprocess stack for detection
+          const detRgba = ops.length ? applyPostOpsRgbaViaGray(rgba, width, height, ops) : rgba;
+          const res = await worker.cvFindChessboardCorners(detRgba, width, height);
           setFound(res.found);
           if (res.found) {
             ctx.save();
@@ -136,18 +131,27 @@ export default function CheckerboardEnhancePreview({
         setFound(null);
       }
     })();
-  }, [camRows, camName, ts, mode, showCorners, worker, enhanceAmt]);
+  }, [camRows, camName, ts, showCorners, worker, ops]);
 
-  // Keep sliders in sync across both camera previews (same namespace)
+  // Respond to namespace updates; only adopt value for this cam
   useEffect(() => {
     const onUpdate = () => {
-      const st = readNamespacedStore<{ calibPreviewEnhance?: number }>();
-      const v = Number(st.calibPreviewEnhance);
-      if (Number.isFinite(v)) setEnhanceAmt(Math.max(0, Math.min(3, v)));
+      const nextOps = getPostOpsForCam(camName);
+      setOps(nextOps);
+      const c = nextOps.find((o) => o.type === "contrast") as any;
+      setEnhanceAmt(c ? Math.max(0, Math.min(3, Number(c.slope) || 1)) : 1.0);
     };
     window.addEventListener("gw:ns:update", onUpdate as EventListener);
     return () => window.removeEventListener("gw:ns:update", onUpdate as EventListener);
-  }, []);
+  }, [camName]);
+
+  // When cam changes, reload its saved value (with global fallback once)
+  useEffect(() => {
+    const nextOps = getPostOpsForCam(camName);
+    setOps(nextOps);
+    const c = nextOps.find((o) => o.type === "contrast") as any;
+    setEnhanceAmt(c ? Math.max(0, Math.min(3, Number(c.slope) || 1)) : 1.0);
+  }, [camName]);
 
   return (
     <div className="col" style={{ gap: 8, minWidth: 360 }}>
@@ -163,17 +167,10 @@ export default function CheckerboardEnhancePreview({
             ))}
           </select>
         </label>
-        <label className="row" style={{ gap: 6 }}>
-          Mode
-          <select value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
-            <option value="original">Original</option>
-            <option value="enhanced">Enhanced</option>
-            <option value="edges">Edges</option>
-          </select>
-        </label>
-        {mode === "enhanced" && (
+        {/* Mode selector removed to simplify UI; preview shows postprocessed output */}
+        {
           <div className="row" style={{ gap: 6, alignItems: "center", minWidth: 200 }}>
-            <label style={{ opacity: 0.85 }}>Enhance</label>
+            <label style={{ opacity: 0.85 }}>Contrast</label>
             <input
               type="range"
               min={0}
@@ -183,7 +180,12 @@ export default function CheckerboardEnhancePreview({
               onChange={(e) => {
                 const v = Math.max(0, Math.min(3, Number(e.target.value)));
                 setEnhanceAmt(v);
-                updateNamespacedStore({ calibPreviewEnhance: v });
+                // Update local ops immediately and persist
+                const other = ops.filter((o) => o.type !== "contrast");
+                const next = Math.abs(v - 1) < 1e-6 ? other : [...other, { type: "contrast" as const, slope: v }];
+                setOps(next);
+                // Write structured ops (keep other ops intact)
+                setContrastForCam(camName, v);
               }}
               style={{ width: 120 }}
             />
@@ -191,7 +193,21 @@ export default function CheckerboardEnhancePreview({
               {enhanceAmt.toFixed(1)}
             </span>
           </div>
-        )}
+        }
+        {/* Simple toggles for pre-detection tuning */}
+        <label className="row" style={{ gap: 6, alignItems: "center" }}>
+          <input
+            type="checkbox"
+            checked={ops.some((o) => o.type === "invert")}
+            onChange={(e) => {
+              const on = e.target.checked;
+              const next = on ? [...ops.filter((o) => o.type !== "invert"), { type: "invert" as const }] : ops.filter((o) => o.type !== "invert");
+              setOps(next);
+              setOpsForCam(camName, next);
+            }}
+          />
+          Invert
+        </label>
         <label className="row" style={{ gap: 6 }}>
           <input
             type="checkbox"
@@ -213,68 +229,14 @@ export default function CheckerboardEnhancePreview({
 }
 
 // --- Image helpers ---
-function unsharp(gray: Uint8ClampedArray, w: number, h: number, amount = 1.0): Uint8ClampedArray {
-  const blur = gaussian3x3(gray, w, h);
-  const out = new Uint8ClampedArray(gray.length);
-  let minV = 255, maxV = 0;
-  for (let i = 0; i < gray.length; i++) {
-    const v = clamp8(gray[i] + amount * (gray[i] - blur[i]));
-    out[i] = v;
-    if (v < minV) minV = v;
-    if (v > maxV) maxV = v;
-  }
-  // Contrast stretch
-  const range = Math.max(1, maxV - minV);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = (((out[i] - minV) * 255) / range) | 0;
-  }
-  return out;
-}
 
-function sobelEdges(gray: Uint8ClampedArray, w: number, h: number): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(gray.length);
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const i = y * w + x;
-      const gx =
-        -gray[i - w - 1] - 2 * gray[i - 1] - gray[i + w - 1] +
-        gray[i - w + 1] + 2 * gray[i + 1] + gray[i + w + 1];
-      const gy =
-        -gray[i - w - 1] - 2 * gray[i - w] - gray[i - w + 1] +
-        gray[i + w - 1] + 2 * gray[i + w] + gray[i + w + 1];
-      const mag = Math.min(255, Math.hypot(gx, gy) | 0);
-      out[i] = mag;
-    }
-  }
-  return out;
-}
-
-function gaussian3x3(gray: Uint8ClampedArray, w: number, h: number): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(gray.length);
-  const k = [1, 2, 1, 2, 4, 2, 1, 2, 1];
-  const ks = 16;
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      let acc = 0;
-      let ki = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const v = gray[(y + dy) * w + (x + dx)];
-          acc += v * k[ki++];
-        }
-      }
-      out[y * w + x] = (acc / ks) | 0;
-    }
-  }
-  return out;
-}
-
-function clamp8(x: number) {
-  return x < 0 ? 0 : x > 255 ? 255 : x | 0;
-}
 
 function drawPoint(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.beginPath();
   ctx.arc(x, y, 2.0, 0, Math.PI * 2);
   ctx.fill();
 }
+
+// order invariant is enforced in config normalization; no local checks
+
+// (no smoothstep needed; highlight tuning removed)
