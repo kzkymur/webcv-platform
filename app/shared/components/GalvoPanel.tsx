@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SerialCommunicator } from "@/shared/hardware/serial";
+import { SerialCommunicator } from "@/shared/module/serialInterface";
 
 const DEFAULT_MIN = 0;
 const DEFAULT_MAX = 65535; // XY2-100 typical 16-bit range

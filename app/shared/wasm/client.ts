@@ -61,6 +61,18 @@ export class WasmWorkerClient {
     return { mapX: new Float32Array(res.mapX), mapY: new Float32Array(res.mapY) };
   }
 
+  async cvCalcUndistMapFisheye(width: number, height: number, intr: Float32Array, dist: Float32Array) {
+    const res = await this.req<{ ok: boolean; mapX?: ArrayBuffer; mapY?: ArrayBuffer } | any>({
+      type: "cv/calcUndistMapFisheye",
+      width,
+      height,
+      intr: intr.buffer,
+      dist: dist.buffer,
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcUndistMapFisheye failed");
+    return { mapX: new Float32Array(res.mapX), mapY: new Float32Array(res.mapY) };
+  }
+
   async cvCalcHomography(aPoints: Float32Array, bPoints: Float32Array) {
     const res = await this.req<{ ok: boolean; H?: ArrayBuffer } | any>({
       type: "cv/calcHomography",

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { listFiles, putFile } from "@/shared/db";
 import type { FileEntry } from "@/shared/db/types";
-import { SerialCommunicator } from "@/shared/hardware/serial";
+import { SerialCommunicator } from "@/shared/module/serialInterface";
 import { useCameraIds } from "@/shared/hooks/useCameraStreams";
 import { formatTimestamp } from "@/shared/util/time";
 import { WasmWorkerClient } from "@/shared/wasm/client";
@@ -374,6 +374,10 @@ export default function Page() {
             setTiming={setTiming}
             busy={busy}
             canRun={!!selected && serialOk}
+            disabledReason={!selected
+              ? "Select an undistortion map (from step 2)"
+              : (!serialOk ? "Connect Microcontroller first" : undefined)
+            }
             onStart={runCalibration}
             onCancel={() => {
               cancelRef.current = true;

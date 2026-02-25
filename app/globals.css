@@ -4,14 +4,15 @@ html, body, #root { height: 100%; margin: 0; padding: 0; }
 body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 .grid {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: var(--sidebar-left-width, 320px) 1fr var(--sidebar-right-width, 320px);
   grid-template-rows: auto 1fr;
   grid-template-areas:
-    "sidebar header"
-    "sidebar main";
+    "sidebar header rightbar"
+    "sidebar main rightbar";
   height: 100vh;
 }
-.sidebar { grid-area: sidebar; border-right: 1px solid #3333; padding: 12px; overflow: auto; }
+.sidebar { position: relative; grid-area: sidebar; border-right: 1px solid #3333; padding: 12px; overflow: auto; }
+.rightbar { position: relative; grid-area: rightbar; border-left: 1px solid #3333; padding: 12px; overflow: auto; }
 .header { grid-area: header; border-bottom: 1px solid #3333; padding: 8px 12px; }
 .main { grid-area: main; padding: 12px; overflow: auto; }
 .panel { border: 1px solid #3333; border-radius: 8px; padding: 10px; margin-bottom: 12px; }

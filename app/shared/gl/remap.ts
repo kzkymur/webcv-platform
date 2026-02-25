@@ -9,7 +9,15 @@
 export type RemapDims = { width: number; height: number };
 
 function createGL(canvas: HTMLCanvasElement): WebGL2RenderingContext {
-  const gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
+  // preserveDrawingBuffer is required so that readPixels() can be called
+  // outside the exact rAF that performed the draw (e.g. from UI handlers).
+  // Without it, many browsers clear the default framebuffer after presenting
+  // and captures would return all zeros (black images).
+  const gl = canvas.getContext("webgl2", {
+    alpha: false,
+    antialias: false,
+    preserveDrawingBuffer: true,
+  });
   if (!gl) throw new Error("WebGL2 not supported");
   return gl;
 }

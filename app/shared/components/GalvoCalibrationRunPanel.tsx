@@ -15,6 +15,7 @@ type Props = {
   setTiming: (t: Timing) => void;
   busy: boolean;
   canRun: boolean;
+  disabledReason?: string;
   onStart: () => void;
   onCancel: () => void;
 };
@@ -32,6 +33,7 @@ export default function GalvoCalibrationRunPanel({
   setTiming,
   busy,
   canRun,
+  disabledReason,
   onStart,
   onCancel,
 }: Props) {
@@ -140,7 +142,7 @@ export default function GalvoCalibrationRunPanel({
         </label>
       </div>
       <div className="row" style={{ gap: 8 }}>
-        <button onClick={onStart} disabled={busy || !canRun} title={!canRun ? "Connect Microcontroller first" : undefined}>
+        <button onClick={onStart} disabled={busy || !canRun} title={!canRun ? (disabledReason || "Unavailable") : undefined}>
           {busy ? "Running…" : "Start"}
         </button>
         {busy && (
@@ -150,4 +152,3 @@ export default function GalvoCalibrationRunPanel({
     </section>
   );
 }
-

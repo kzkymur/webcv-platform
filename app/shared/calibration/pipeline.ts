@@ -28,6 +28,13 @@ export async function detectCornersForRows(
   // Read per-camera postprocess stacks once per run
   const opsA = getPostOpsForCam(camA);
   const opsB = getPostOpsForCam(camB);
+  const fmtOps = (ops: any[]) =>
+    !ops || ops.length === 0
+      ? "(none)"
+      : ops
+          .map((o) => (o.type === "contrast" ? `contrast(${(o.slope ?? 1).toFixed(2)})` : o.type))
+          .join(" + ");
+  log(`Preprocess A=${camA}: ${fmtOps(opsA)} | B=${camB}: ${fmtOps(opsB)}`);
   for (const r of rows) {
     for (const cam of [camA, camB]) {
       const path = r.cams[cam];
@@ -117,12 +124,16 @@ export async function saveUndistortionMaps(
   height: number,
   intr: Float32Array | null,
   dist: Float32Array | null,
+  model: CameraModel,
   runTs: string,
   log: (s: string) => void
 ) {
   if (!intr || !dist) return;
   try {
-    const { mapX, mapY } = await wrk.cvCalcUndistMap(width, height, intr, dist);
+    const { mapX, mapY } =
+      model === "fisheye"
+        ? await wrk.cvCalcUndistMapFisheye(width, height, intr, dist)
+        : await wrk.cvCalcUndistMap(width, height, intr, dist);
     await putFile(
       remapXYFile(
         `2-calibrate-scenes/${runTs}/cam-${sanitize(camName)}_remapXY.xy`,

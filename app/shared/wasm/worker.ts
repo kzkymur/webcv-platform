@@ -133,6 +133,37 @@ self.onmessage = async (ev: MessageEvent<any>) => {
     return;
   }
 
+  // cv/calcUndistMapFisheye
+  if (type === "cv/calcUndistMapFisheye") {
+    const { width, height, intr, dist } = ev.data as { id: number; type: string; width: number; height: number; intr: ArrayBuffer; dist: ArrayBuffer };
+    const Module = await getModule();
+    try {
+      const intrPtr = new WMF32A(Module as any, 9);
+      const distPtr = new WMF32A(Module as any, 4);
+      intrPtr.data = new Float32Array(intr);
+      distPtr.data = new Float32Array(dist);
+      const mapLen = width * height;
+      const mapXPtr = new WMF32A(Module as any, mapLen);
+      const mapYPtr = new WMF32A(Module as any, mapLen);
+      (Module as any).ccall(
+        "calcUndistMapFisheye",
+        null,
+        ["number", "number", "number", "number", "number", "number"],
+        [intrPtr.pointer, distPtr.pointer, width, height, mapXPtr.pointer, mapYPtr.pointer]
+      );
+      const xCopy = mapXPtr.data;
+      const yCopy = mapYPtr.data;
+      intrPtr.clear();
+      distPtr.clear();
+      mapXPtr.clear();
+      mapYPtr.clear();
+      (self as any).postMessage({ id, ok: true, type: "cv/calcUndistMapFisheye", mapX: xCopy.buffer, mapY: yCopy.buffer }, [xCopy.buffer as any, yCopy.buffer as any]);
+    } catch (e) {
+      (self as any).postMessage({ id, ok: false, type: "cv/calcUndistMapFisheye", error: String(e || "unknown error") });
+    }
+    return;
+  }
+
   // cv/calcHomography
   if (type === "cv/calcHomography") {
     const { aPoints, bPoints } = ev.data as any;

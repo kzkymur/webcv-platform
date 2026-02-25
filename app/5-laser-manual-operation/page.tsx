@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { listFiles, getFile } from "@/shared/db";
 import type { FileEntry } from "@/shared/db/types";
-import { SerialCommunicator } from "@/shared/hardware/serial";
+import { SerialCommunicator } from "@/shared/module/serialInterface";
 import { RemapRenderer } from "@/shared/gl/remap";
 import { useCameraIds, useCameraStream } from "@/shared/hooks/useCameraStreams";
 import { loadRemapXY, buildIdentityInterMap } from "@/shared/util/remap";
@@ -53,6 +53,7 @@ export default function Page() {
   const [serialOk, setSerialOk] = useState(false);
   const [galvoSync, setGalvoSync] = useState(false);
   const [laserPct, setLaserPct] = useState<number>(0);
+  const ready = serialOk && !!Hinv;
 
   const lastClickRef = useRef<{ x: number; y: number; gx: number; gy: number } | null>(null);
 
@@ -212,6 +213,14 @@ export default function Page() {
     })();
   }, [hSel]);
 
+  // Debug: log readiness toggles
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[5] GalvoSync readiness", { serialOk, hasHinv: !!Hinv, hSel, deviceId });
+    } catch {}
+  }, [serialOk, Hinv, hSel, deviceId]);
+
   function drawOverlay() {
     const r = rendererRef.current;
     const can = overlayCanvasRef.current;
@@ -356,8 +365,17 @@ export default function Page() {
             <div className="row" style={{ gap: 12, alignItems: "center" }}>
               <span style={{ opacity: 0.75 }}>FPS: {fps.toFixed(1)}</span>
               <label className="row" style={{ gap: 6 }}>
-                <input type="checkbox" checked={galvoSync} onChange={(e) => setGalvoSync(e.target.checked)} disabled={!serialOk || !Hinv} />
+                <input
+                  type="checkbox"
+                  checked={galvoSync}
+                  onChange={(e) => setGalvoSync(e.target.checked)}
+                  disabled={!ready}
+                  title={!serialOk ? "Connect Microcontroller first" : (!Hinv ? "Load a homography (Hinv)" : "" )}
+                />
                 Galvo Sync (click canvas to move)
+                <span style={{ fontSize: 12, opacity: 0.6 }}>
+                  [{serialOk ? "serial:ok" : "serial:-"}, {Hinv ? "Hinv:ok" : "Hinv:-"}]
+                </span>
               </label>
               <label className="row" style={{ gap: 6 }}>
                 Laser (%)
@@ -388,4 +406,3 @@ export default function Page() {
     </>
   );
 }
-

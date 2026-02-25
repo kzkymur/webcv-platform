@@ -6,5 +6,8 @@
     - 2. Calibrate Scenes — detects corners, computes intrinsics/extrinsics, writes artifacts under `2-calibrate-scenes/<runTs>/` including per‑camera `cam-<name>_calibration.json`, per‑camera `cam-<name>_remapXY.xy`, and pairwise `cam-A_to_cam-B_H_undist.json` (no pairwise `mappingXY.xy`).
     - 3. Remap Realtime — lists detected remap fields (per‑camera undistortion) and previews the chosen field; live WebGL application is being integrated.
   - Do not render a page-link banner above main content.
-  - Sidebar (persistent): Device Settings, File System (English labels).
+  - Sidebars (persistent):
+    - Left: File System
+    - Right: Device Settings
+    - Both widths are user-resizable via drag and are persisted across pages.
   - File preview: when a file is selected in the sidebar file system, render a 2D Canvas preview under the index.

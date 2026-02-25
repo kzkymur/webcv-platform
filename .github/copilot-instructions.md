@@ -116,7 +116,7 @@ pnpm lint
 
 ## API Reference
 
-### TeencyCommunicator ([`src/module/teencyInterface`](../src/module/teencyInterface.ts))
+### SerialCommunicator ([`app/shared/module/serialInterface.ts`](../app/shared/module/serialInterface.ts))
 Main interface for hardware communication:
 ```typescript
 // Set galvo position

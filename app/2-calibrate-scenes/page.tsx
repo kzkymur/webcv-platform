@@ -144,6 +144,7 @@ export default function Page() {
         detA[0].height,
         intrA,
         distA,
+        modelA,
         runTs,
         appendLog
       );
@@ -155,6 +156,7 @@ export default function Page() {
         detB[0].height,
         intrB,
         distB,
+        modelB,
         runTs,
         appendLog
       );

@@ -202,9 +202,15 @@ EXTERN EMSCRIPTEN_KEEPALIVE bool calcInnerParams(uint32_t* pointersPointer, cons
   cout << "intr found" << endl;
   cout << "rms is " << rms << endl;
   intr.convertTo(intr, CV_32F);
-  dist.convertTo(dist, CV_32F);
+  // Stabilize: keep normal lens 5 params, zero-out rational terms (k4..k6)
+  {
+    cv::Mat d32; dist.convertTo(d32, CV_32F);
+    cv::Mat out8 = cv::Mat::zeros(8, 1, CV_32F);
+    int keep = std::min(5, d32.rows * d32.cols); // k1,k2,p1,p2,k3
+    if (keep > 0) d32.rowRange(0, keep).copyTo(out8.rowRange(0, keep));
+    writeMat(out8, distCoeffsDest);
+  }
   writeMat(intr, intrMatrixDest);
-  writeMat(dist, distCoeffsDest);
   return true;
 }
 
@@ -224,9 +230,15 @@ EXTERN EMSCRIPTEN_KEEPALIVE bool calcInnerParamsExt(uint32_t* pointersPointer, c
   double rms = cv::calibrateCamera(objPts, imgPts, imageSize, intr, dist, rvecs, tvecs);
   (void)rms;
   intr.convertTo(intr, CV_32F);
-  dist.convertTo(dist, CV_32F);
+  // Stabilize: keep normal lens 5 params, zero-out rational terms (k4..k6)
+  {
+    cv::Mat d32; dist.convertTo(d32, CV_32F);
+    cv::Mat out8 = cv::Mat::zeros(8, 1, CV_32F);
+    int keep = std::min(5, d32.rows * d32.cols);
+    if (keep > 0) d32.rowRange(0, keep).copyTo(out8.rowRange(0, keep));
+    writeMat(out8, distCoeffsDest);
+  }
   writeMat(intr, intrMatrixDest);
-  writeMat(dist, distCoeffsDest);
   // Flatten rvecs/tvecs to Nx3 float arrays
   cv::Mat rv(nPointer, 3, CV_32F);
   cv::Mat tv(nPointer, 3, CV_32F);
@@ -296,6 +308,24 @@ EXTERN EMSCRIPTEN_KEEPALIVE void calcUndistMap(void* intrP, void* distP, int img
   cout << "initUndistortRectifyMap" << endl;
   cv::initUndistortRectifyMap(intr, dist, mapR, new_intrinsic, imageSize, CV_32FC1, mapX, mapY);
 
+  writeMat(mapX, mapXDest);
+  writeMat(mapY, mapYDest);
+}
+
+// Fisheye variant: use cv::fisheye undistortion with 4-coeff distortion vector
+EXTERN EMSCRIPTEN_KEEPALIVE void calcUndistMapFisheye(void* intrP, void* distP, int imgWidth, const int imgHeight, void* mapXDest, void* mapYDest) {
+  cout << "calcUndistMapFisheye" << endl;
+  using namespace cv;
+  cv::Mat mapX, mapY;
+  cv::Size imageSize(imgWidth, imgHeight);
+  // Read inputs (intr: 3x3, dist: 1x4)
+  cv::Mat intr = readMat32F(intrP, 3, 3);
+  cv::Mat dist = readMat32F(distP, 1, 4);
+  // Estimate new camera matrix. balance=0 (crop similar to alpha=0)
+  cv::Mat newK;
+  cv::fisheye::estimateNewCameraMatrixForUndistortRectify(intr, dist, imageSize, cv::Matx33d::eye(), newK, 0.0, imageSize, 1.0);
+  // Build maps in undistorted domain
+  cv::fisheye::initUndistortRectifyMap(intr, dist, cv::Matx33d::eye(), newK, imageSize, CV_32FC1, mapX, mapY);
   writeMat(mapX, mapXDest);
   writeMat(mapY, mapYDest);
 }
