@@ -160,13 +160,15 @@ async function toY16ProcessedStream(
   const hintedH = (settings.height as number | undefined) || undefined;
 
   const processor = new (Processor as any)({ track });
-  const reader: ReadableStreamDefaultReader<any> =
-    processor.readable.getReader();
+  const readable: ReadableStream<any> = (processor as any).readable;
+  const reader: ReadableStreamDefaultReader<any> = readable.getReader();
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) return { processed: src, stop: () => {} };
   let running = true;
+  let readerLocked = true;
+  let stopped = false;
 
   // Start capture from canvas
   const out = canvas.captureStream();
@@ -237,18 +239,32 @@ async function toY16ProcessedStream(
       console.warn("Y16 processor stopped", err);
     } finally {
       try {
-        reader.releaseLock?.();
+        if (readerLocked) {
+          readerLocked = false;
+          reader.releaseLock?.();
+        }
       } catch {}
     }
   })();
 
   const stop = () => {
+    if (stopped) return;
+    stopped = true;
     running = false;
-    try {
-      reader.cancel?.();
-    } catch {}
+    // Prefer stopping the source track first; this will naturally end reads.
     try {
       track.stop();
+    } catch {}
+    // Cancel the stream depending on lock state; swallow async rejections.
+    try {
+      if (readerLocked) {
+        const p: any = reader.cancel?.();
+        // Avoid "Uncaught (in promise)" if implementations reject
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } else {
+        const p: any = (readable as any)?.cancel?.();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      }
     } catch {}
     try {
       out.getTracks().forEach((t) => t.stop());

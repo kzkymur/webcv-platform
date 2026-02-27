@@ -3,7 +3,8 @@
   - TypeScript only
   - Shows an English "Feature Index" (not a workflow). Pages are independent features; the index briefly explains each and where its inputs/outputs reside:
     - 1. Syncro Checkerboard Shots — capture frames from selected cameras; saves to `1-syncro-checkerboard_shots/<ts>/cam-<name>.(rgb|gray)`.
-    - 2. Calibrate Scenes — detects corners, computes intrinsics/extrinsics, writes artifacts under `2-calibrate-scenes/<runTs>/` including per‑camera `cam-<name>_calibration.json`, per‑camera `cam-<name>_remapXY.xy`, and pairwise `cam-A_to_cam-B_H_undist.json` (no pairwise `mappingXY.xy`).
+    - 2. Calibrate Scenes — detects corners and computes per‑camera intrinsics/extrinsics and undistortion maps (single‑camera workflow). Writes artifacts under `2-calibrate-scenes/<runTs>/` including per‑camera `cam-<name>_calibration.json` and `cam-<name>_remapXY.xy`.
+    - 6. Cameras Homography — select Camera A/B and a single shared timestamp; displays undistorted previews and computes a homography from that pair. Saves undist frames and JSON under `6-cameras-homography/<runTs>/`.
     - 3. Remap Realtime — lists detected remap fields (per‑camera undistortion) and previews the chosen field; live WebGL application is being integrated.
   - Do not render a page-link banner above main content.
   - Sidebars (persistent):

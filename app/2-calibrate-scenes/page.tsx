@@ -7,16 +7,16 @@ import Sidebar from "@/components/Sidebar";
 import { listFiles } from "@/shared/db";
 import { WasmWorkerClient } from "@/shared/wasm/client";
 import { formatTimestamp } from "@/shared/util/time";
-import { sanitize, shorten } from "@/shared/util/strings";
+import { shorten } from "@/shared/util/strings";
 import { parseShotKey } from "@/shared/util/shots";
 import {
   type CameraModel,
-  detectCornersForRows,
+  detectCornersForCam,
   computeAndSaveIntrinsics,
   saveUndistortionMaps,
-  computeAndSaveInterMapping,
 } from "@/shared/calibration/pipeline";
 import CheckerboardEnhancePreview from "@/shared/components/CheckerboardEnhancePreview";
+import LogFooterShell from "@/components/LogFooterShell";
 
 // moved: ShotKey type → @/shared/util/shots
 
@@ -28,10 +28,8 @@ type ShotRow = {
 export default function Page() {
   const [rows, setRows] = useState<ShotRow[]>([]);
   const [camNames, setCamNames] = useState<string[]>([]);
-  const [camA, setCamA] = useState<string>("");
-  const [camB, setCamB] = useState<string>("");
-  const [modelA, setModelA] = useState<CameraModel>("normal");
-  const [modelB, setModelB] = useState<CameraModel>("normal");
+  const [cam, setCam] = useState<string>("");
+  const [model, setModel] = useState<CameraModel>("normal");
   const [selectedTs, setSelectedTs] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string>("");
@@ -67,14 +65,13 @@ export default function Page() {
       setRows(sorted);
       const camList = Array.from(cams.values()).sort();
       setCamNames(camList);
-      if (!camA && camList[0]) setCamA(camList[0]);
-      if (!camB && camList[1]) setCamB(camList[1]);
+      if (!cam && camList[0]) setCam(camList[0]);
     })();
   }, []);
 
   const usableRows = useMemo(
-    () => rows.filter((r) => r.cams[camA] && r.cams[camB]),
-    [rows, camA, camB]
+    () => rows.filter((r) => (cam ? !!r.cams[cam] : false)),
+    [rows, cam]
   );
 
   useEffect(() => {
@@ -82,99 +79,48 @@ export default function Page() {
     const s = new Set<string>();
     usableRows.forEach((r) => s.add(r.ts));
     setSelectedTs(s);
-  }, [camA, camB, rows]);
+  }, [cam, rows]);
 
   function appendLog(line: string) {
     setLog((prev) => `${prev}${prev ? "\n" : ""}${line}`);
   }
 
   async function runCalibration() {
-    if (!camA || !camB) return;
+    if (!cam) return;
     const wrk = workerRef.current;
     if (!wrk) return;
     setBusy(true);
     setLog("");
     const pick = usableRows.filter((r) => selectedTs.has(r.ts));
-    appendLog(`Target pairs: ${pick.length} (${camA} ↔ ${camB})`);
+    appendLog(`Target frames: ${pick.length} (cam=${cam})`);
     if (pick.length === 0) return setBusy(false);
-    // 1) Detect corners
-    const { detA, detB } = await detectCornersForRows(
-      wrk,
-      camA,
-      camB,
-      pick,
-      appendLog
-    );
+    // 1) Detect corners (single camera)
+    const dets = await detectCornersForCam(wrk, cam, pick, appendLog);
 
-    // 2) Intrinsics + extrinsics
+    // 2) Intrinsics + extrinsics (single camera)
     const runTs = formatTimestamp(new Date());
-    const {
-      intr: intrA,
-      dist: distA,
-      rvecs: rA,
-      tvecs: tA,
-    } = await computeAndSaveIntrinsics(
+    const { intr, dist } = await computeAndSaveIntrinsics(
       wrk,
-      camA,
-      modelA,
-      detA,
-      runTs,
-      appendLog
-    );
-    const {
-      intr: intrB,
-      dist: distB,
-      rvecs: rB,
-      tvecs: tB,
-    } = await computeAndSaveIntrinsics(
-      wrk,
-      camB,
-      modelB,
-      detB,
+      cam,
+      model,
+      dets,
       runTs,
       appendLog
     );
 
-    // 3) Undistortion maps
-    if (detA.length > 0)
+    // 3) Undistortion maps (single camera)
+    if (dets.length > 0)
       await saveUndistortionMaps(
         wrk,
-        camA,
-        detA[0].width,
-        detA[0].height,
-        intrA,
-        distA,
-        modelA,
+        cam,
+        dets[0].width,
+        dets[0].height,
+        intr,
+        dist,
+        model,
         runTs,
         appendLog
       );
-    if (detB.length > 0)
-      await saveUndistortionMaps(
-        wrk,
-        camB,
-        detB[0].width,
-        detB[0].height,
-        intrB,
-        distB,
-        modelB,
-        runTs,
-        appendLog
-      );
-
-    // 4) Inter-camera mapping
-    await computeAndSaveInterMapping(
-      wrk,
-      detA,
-      detB,
-      intrA,
-      distA,
-      intrB,
-      distB,
-      camA,
-      camB,
-      runTs,
-      appendLog
-    );
     setBusy(false);
   }
 
@@ -186,8 +132,8 @@ export default function Page() {
           <b>2. Calibrate Scenes</b>
           <div className="row" style={{ gap: 12 }}>
             <label className="row" style={{ gap: 6 }}>
-              Camera A
-              <select value={camA} onChange={(e) => setCamA(e.target.value)}>
+              Camera
+              <select value={cam} onChange={(e) => setCam(e.target.value)}>
                 {camNames.map((n) => (
                   <option key={n} value={n}>
                     {n}
@@ -198,28 +144,8 @@ export default function Page() {
             <label className="row" style={{ gap: 6 }}>
               Model
               <select
-                value={modelA}
-                onChange={(e) => setModelA(e.target.value as CameraModel)}
-              >
-                <option value="normal">normal</option>
-                <option value="fisheye">fisheye</option>
-              </select>
-            </label>
-            <label className="row" style={{ gap: 6 }}>
-              Camera B
-              <select value={camB} onChange={(e) => setCamB(e.target.value)}>
-                {camNames.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="row" style={{ gap: 6 }}>
-              Model
-              <select
-                value={modelB}
-                onChange={(e) => setModelB(e.target.value as CameraModel)}
+                value={model}
+                onChange={(e) => setModel(e.target.value as CameraModel)}
               >
                 <option value="normal">normal</option>
                 <option value="fisheye">fisheye</option>
@@ -227,29 +153,21 @@ export default function Page() {
             </label>
             <button
               onClick={runCalibration}
-              disabled={busy || !camA || !camB || selectedTs.size === 0}
+              disabled={busy || !cam || selectedTs.size === 0}
             >
-              Run ({selectedTs.size} pairs)
+              Run ({selectedTs.size} frames)
             </button>
           </div>
         </div>
       </header>
-      <main className="main">
+      <LogFooterShell log={log} title="Log">
         <div className="col" style={{ gap: 16 }}>
           <section className="col" style={{ gap: 8 }}>
-            <h4>Pre‑Detect Preview (per camera)</h4>
+            <h4>Pre‑Detect Preview</h4>
             <div className="row" style={{ gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-              {camA && (
+              {cam && (
                 <CheckerboardEnhancePreview
-                  camName={camA}
-                  rows={rows}
-                  selectedTs={selectedTs}
-                  worker={workerRef.current}
-                />
-              )}
-              {camB && (
-                <CheckerboardEnhancePreview
-                  camName={camB}
+                  camName={cam}
                   rows={rows}
                   selectedTs={selectedTs}
                   worker={workerRef.current}
@@ -263,10 +181,8 @@ export default function Page() {
           <section className="col" style={{ gap: 8 }}>
             <h4>Select Frames (from 1-syncro-checkerboard_shots)</h4>
             <div className="row" style={{ gap: 8, alignItems: "center" }}>
-              <span style={{ opacity: 0.8 }}>Targets</span>
-              <span style={{ fontFamily: "monospace" }}>{camA}</span>
-              <span>×</span>
-              <span style={{ fontFamily: "monospace" }}>{camB}</span>
+              <span style={{ opacity: 0.8 }}>Target</span>
+              <span style={{ fontFamily: "monospace" }}>{cam || "(cam)"}</span>
               <button
                 onClick={() =>
                   setSelectedTs(new Set(usableRows.map((r) => r.ts)))
@@ -302,10 +218,9 @@ export default function Page() {
                   <span style={{ width: 280, fontFamily: "monospace" }}>
                     {r.ts}
                   </span>
-                  <span style={{ opacity: 0.8 }}>A:</span>
                   <span
                     className="file"
-                    title={r.cams[camA]}
+                    title={cam ? r.cams[cam] : ""}
                     style={{
                       flex: 1,
                       overflow: "hidden",
@@ -313,20 +228,7 @@ export default function Page() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {shorten(r.cams[camA])}
-                  </span>
-                  <span style={{ opacity: 0.8 }}>B:</span>
-                  <span
-                    className="file"
-                    title={r.cams[camB]}
-                    style={{
-                      flex: 1,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {shorten(r.cams[camB])}
+                    {cam ? shorten(r.cams[cam]) : ""}
                   </span>
                 </label>
               ))}
@@ -335,26 +237,10 @@ export default function Page() {
               )}
             </div>
           </section>
-          <section className="col" style={{ gap: 8 }}>
-            <h4>Log</h4>
-            <pre
-              style={{
-                minHeight: 120,
-                maxHeight: 240,
-                overflow: "auto",
-                background: "#111",
-                color: "#eaeaea",
-                padding: 8,
-                borderRadius: 4,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {log}
-            </pre>
-          </section>
+          {/* log footer renders below */}
           {/* Enhanced previews are shown above; no FS preview here */}
         </div>
-      </main>
+      </LogFooterShell>
     </>
   );
 }

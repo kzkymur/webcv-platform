@@ -90,7 +90,7 @@ export default function FileSystemBrowser({
   }, [active]);
 
   return (
-    <div className="col" style={{ gap: 10 }}>
+    <div className="col" style={{ gap: 10, flex: 1, minHeight: 0 }}>
       {/* viewer only */}
       <div className="row" style={{ gap: 8 }}>
         <input
@@ -200,7 +200,7 @@ export default function FileSystemBrowser({
         onSelect={setActive}
         filter={q}
       />
-      <div className="row">
+      <div className="row" style={{ paddingTop: 4 }}>
         <button
           disabled={busy || (selected.size === 0 && !active)}
           onClick={async () => {
@@ -324,7 +324,7 @@ function DirTree({
   walk(nodes, 0);
 
   return (
-    <div className="tree" style={{ maxHeight: 280, overflow: "auto" }}>
+    <div className="tree" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
       {rows.map(({ node, depth }) => {
         if (node.isDir) {
           const isOpen = open.has(node.path) || forcedOpen.has(node.path);

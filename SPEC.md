@@ -39,6 +39,16 @@
 - ファイル名の編集は不可で OK ですが、削除機能は実装してください。
 - SQLite Wasm (OPFS) なので、保存・削除したファイルは全ページで共通です。これが基軸となりユーザは各ページの機能を協調的に使用してその目的を達成します。
 
+## 4. ログフッター（共有・リサイズ可、2026-02-25 追加）
+
+- WASM を使うページでは、メイン領域の最下部にログ専用のフッターを表示します（左右サイドバーの間に収まる）。
+- フッターの高さはドラッグで変更でき、対象ページ間で共有されます。
+  - ストレージキー: `logFooterHeight`（単位: px, 数値）
+  - CSS 変数: `--log-footer-height`
+  - 既定値 160px、最小 80px、最大はビューポート高さの 60%（動的上限）。
+- ページ遷移しても高さは保持されます（名前空間付きローカルストレージ）。
+- 各ページの従来の「Log セクション」は撤去し、共通フッターに統合します。
+
 # 各ページに実装される機能
 
 各ページの SPEC.md に記載
@@ -122,8 +132,22 @@
   - ログに `Preprocess A=..., B=...` を出力するようにし、差異を可視化しました。
 - Normal モデルの歪み係数は安定化のため 8 要素固定で保存し、`k1,k2,p1,p2,k3` の5要素のみを保持、`k4..k6` は 0 に正規化します（`calcInnerParams`/`calcInnerParamsExt`）。
 
+## Undistortion Auto‑Select（2026-02-25 追記）
+
+ - ページ4（Galvo Calibration）とページ5（Laser Manual Operation）では、undistortion map の手動選択 UI を廃止し、自動適用に変更しました。
+ - 選択中のカメラ（Device Settings のデバイス）のラベルを `sanitize()` した cam 名から、`2-calibrate-scenes/<runTs>/cam-<CamName>_remapXY.xy` の最新（最大 `runTs`）を自動適用します。
+ - 対応する undistortion map が見つからない場合でも動作は継続します。自動で「恒等（identity）マップ」を適用し、警告表示のみ行います（生のカメラ映像）。
+
 ## WebGL Capture Notes（2026-02-24 追記）
 
 - 画像保存（ページ3/4のプレビュー保存・キャリブレーション基準/差分の保存）は、`RemapRenderer.readPixels()` で WebGL のデフォルトフレームバッファから取得します。
 - これを安定させるため `app/shared/gl/remap.ts` の WebGL2 コンテキスト生成時に `preserveDrawingBuffer: true` を指定しました。これにより rAF の描画完了後もバッファ内容が保持され、UI ハンドラなど別タイミングでの `readPixels()` が黒（全0）になりません。
 - パフォーマンス影響が問題になる場合は、将来的に「最終出力もオフスクリーンFBOに描画→そこから `readPixels()`」へ切り替えると `preserveDrawingBuffer` を外せます。
+
+## Camera Y16 Pipeline（2026-02-25 追記）
+
+- 右サイドバー「Web Cameras」の各行にある `Y16` チェックで、該当カメラを 16bit グレースケール入力として扱います。
+- 実装: `useCameraStreams.ts` 内で `MediaStreamTrackProcessor` を用いて各フレームを読み取り、`format` が `Y16/GRAY16` の場合は 16bit → 8bit の疑似グレイへ線形正規化し `canvas.putImageData()` で描画、`canvas.captureStream()` を UI 側へ供給します。
+- フォールバック: `MediaStreamTrackProcessor` が存在しない環境ではパススルー（Y16 変換は行わない）。
+- ライフサイクル: 停止処理はソース `track.stop()` を優先し、リーダーのロック状態に応じて `reader.cancel()` または `readable.cancel()` を呼び分けます（どちらも失敗は握りつぶし）。これにより「ReadableStreamDefaultReader が release 済み」エラーを回避します。停止は冪等です。
+- 設定の保存場所: `cameraOptions: Record<string, { y16?: boolean }>`（名前空間付きローカルストレージ）

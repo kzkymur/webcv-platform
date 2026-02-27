@@ -16,6 +16,39 @@ export type Det = {
   points: Float32Array;
 };
 
+export async function detectCornersForCam(
+  wrk: WasmWorkerClient,
+  cam: string,
+  rows: { ts: string; cams: Record<string, string> }[],
+  log: (s: string) => void
+) {
+  const dets: Det[] = [];
+  const ops = getPostOpsForCam(cam);
+  const fmtOps = (ops: any[]) =>
+    !ops || ops.length === 0
+      ? "(none)"
+      : ops
+          .map((o) => (o.type === "contrast" ? `contrast(${(o.slope ?? 1).toFixed(2)})` : o.type))
+          .join(" + ");
+  log(`Preprocess ${cam}: ${fmtOps(ops)}`);
+  for (const r of rows) {
+    const path = r.cams[cam];
+    if (!path) continue;
+    const fe = await getFile(path);
+    if (!fe) continue;
+    const { rgba, width, height } = fileToRGBA(fe);
+    const detRgba = ops.length ? applyPostOpsRgbaViaGray(rgba, width, height, ops) : rgba;
+    const res = await wrk.cvFindChessboardCorners(detRgba, width, height);
+    if (!res.found) {
+      log(`× Corner detection failed: ${r.ts} cam=${cam}`);
+      continue;
+    }
+    dets.push({ ts: r.ts, cam, path, width, height, points: res.points });
+    log(`✓ Corners detected: ${r.ts} cam=${cam} (${width}x${height})`);
+  }
+  return dets;
+}
+
 export async function detectCornersForRows(
   wrk: WasmWorkerClient,
   camA: string,

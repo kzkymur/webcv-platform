@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getFile } from "@/shared/db";
+import { getFile, listFiles } from "@/shared/db";
 import { fileToRGBA } from "@/shared/util/fileEntry";
 import type { FileEntry } from "@/shared/db/types";
 import type { WasmWorkerClient } from "@/shared/wasm/client";
 // storage helpers are encapsulated in postprocessConfig
 import { applyPostOpsGray, applyPostOpsRgbaViaGray } from "@/shared/image/postprocess";
 import { getPostOpsForCam, setContrastForCam, setOpsForCam } from "@/shared/calibration/postprocessConfig";
+import { loadRemapXY } from "@/shared/util/remap";
+import { sanitize } from "@/shared/util/strings";
+import { applyRemapXYBilinear } from "@/shared/image/remapCpu";
 
 export type ShotRow = {
   ts: string;
@@ -20,11 +23,25 @@ export default function CheckerboardEnhancePreview({
   rows,
   selectedTs,
   worker,
+  undistort = false,
+  tsValue,
+  onTsChange,
+  tsOptions,
+  onClickOriginal,
+  marker,
 }: {
   camName: string;
   rows: ShotRow[];
   selectedTs: Set<string>;
   worker: WasmWorkerClient | null;
+  undistort?: boolean;
+  tsValue?: string;
+  onTsChange?: (ts: string) => void;
+  tsOptions?: string[];
+  // When provided, clicking the canvas reports the original (undist) pixel coords
+  onClickOriginal?: (x: number, y: number) => void;
+  // Optional overlay marker in original (undist) pixel coords
+  marker?: { x: number; y: number; color?: string; cross?: boolean } | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [ts, setTs] = useState<string>("");
@@ -32,6 +49,8 @@ export default function CheckerboardEnhancePreview({
   const [showCorners, setShowCorners] = useState<boolean>(true);
   const [busyDetect, setBusyDetect] = useState(false);
   const [ops, setOps] = useState(() => getPostOpsForCam(camName));
+  const lastScaleRef = useRef(1);
+  const lastSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
   // Per-camera contrast tuning (persisted per namespace)
   const [enhanceAmt, setEnhanceAmt] = useState<number>(() => {
     const ops = getPostOpsForCam(camName);
@@ -40,29 +59,56 @@ export default function CheckerboardEnhancePreview({
   });
 
   const camRows = useMemo(() => rows.filter((r) => !!r.cams[camName]), [rows, camName]);
-  const tsList = useMemo(() => camRows.map((r) => r.ts), [camRows]);
+  const tsList = useMemo(() => (tsOptions && tsOptions.length ? tsOptions : camRows.map((r) => r.ts)), [camRows, tsOptions?.join("|")]);
+
+  // Load latest undist map for this camera when enabled
+  const [mapXY, setMapXY] = useState<{ xy: Float32Array; width: number; height: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!undistort) { setMapXY(null); return; }
+      const files = await listFiles();
+      const name = sanitize(camName);
+      const candidates = files
+        .filter((f) => /^2-calibrate-scenes\//.test(f.path) && new RegExp(`/cam-${name}_remapXY\\.xy$`).test(f.path))
+        .map((f) => f.path)
+        .sort();
+      const latest = candidates[candidates.length - 1];
+      if (!latest) { setMapXY(null); return; }
+      const m = await loadRemapXY(latest);
+      if (!cancelled) setMapXY(m);
+    })();
+    return () => { cancelled = true; };
+  }, [camName, undistort]);
+
+  const tsEff = typeof tsValue === "string" ? tsValue : ts;
 
   // Default TS: latest selected, else latest available
   useEffect(() => {
+    // Skip defaulting when controlled from parent
+    if (typeof tsValue === "string") return;
     let next = "";
     const sel = Array.from(selectedTs.values()).filter((t) => tsList.includes(t));
     if (sel.length > 0) next = sel[sel.length - 1];
     else if (tsList.length > 0) next = tsList[tsList.length - 1];
     setTs((prev) => (prev && tsList.includes(prev) ? prev : next));
-  }, [selectedTs, tsList.join("|")]);
+  }, [selectedTs, tsList.join("|"), tsValue]);
 
   // Render pipeline
   useEffect(() => {
     (async () => {
       const c = canvasRef.current;
-      if (!c || !ts) return;
-      const row = camRows.find((r) => r.ts === ts);
+      if (!c || !tsEff) return;
+      const row = camRows.find((r) => r.ts === tsEff);
       if (!row) return;
       const path = row.cams[camName];
       if (!path) return;
       const fe = await getFile(path);
       if (!fe) return;
       const { rgba, width, height } = fileToRGBA(fe as FileEntry);
+      const useRgba = undistort && mapXY && mapXY.width === width && mapXY.height === height
+        ? applyRemapXYBilinear(rgba, width, height, mapXY.xy)
+        : rgba;
 
       // Downscale for preview to keep CPU light
       const maxW = 640;
@@ -77,9 +123,9 @@ export default function CheckerboardEnhancePreview({
         for (let x = 0; x < pW; x++) {
           const sx = Math.min(width - 1, Math.floor(x / scale));
           const si = (sy * width + sx) * 4;
-          const r = rgba[si];
-          const g = rgba[si + 1];
-          const b = rgba[si + 2];
+          const r = useRgba[si];
+          const g = useRgba[si + 1];
+          const b = useRgba[si + 2];
           gray[y * pW + x] = (0.299 * r + 0.587 * g + 0.114 * b) | 0;
         }
       }
@@ -100,13 +146,16 @@ export default function CheckerboardEnhancePreview({
       c.width = pW;
       c.height = pH;
       ctx.putImageData(new ImageData(out, pW, pH), 0, 0);
+      lastScaleRef.current = scale;
+      lastSizeRef.current = { w: width, h: height };
 
       // Optional: draw detected corners (on downscaled coords)
       if (showCorners && worker) {
         setBusyDetect(true);
         try {
-          // Always apply configured postprocess stack for detection
-          const detRgba = ops.length ? applyPostOpsRgbaViaGray(rgba, width, height, ops) : rgba;
+          // Always apply configured postprocess stack for detection on undist or raw
+          const detSrc = useRgba;
+          const detRgba = ops.length ? applyPostOpsRgbaViaGray(detSrc, width, height, ops) : detSrc;
           const res = await worker.cvFindChessboardCorners(detRgba, width, height);
           setFound(res.found);
           if (res.found) {
@@ -130,8 +179,23 @@ export default function CheckerboardEnhancePreview({
       } else {
         setFound(null);
       }
+
+      // Draw user marker if given (after corners so marker stays on top)
+      if (marker && isFinite(marker.x) && isFinite(marker.y)) {
+        const mx = marker.x * scale;
+        const my = marker.y * scale;
+        if (mx >= 0 && my >= 0 && mx < pW && my < pH) {
+          ctx.save();
+          const color = marker.color || "#00ffff";
+          ctx.strokeStyle = color;
+          ctx.fillStyle = color;
+          ctx.lineWidth = 2;
+          drawMarker(ctx, mx, my, marker.cross !== false);
+          ctx.restore();
+        }
+      }
     })();
-  }, [camRows, camName, ts, showCorners, worker, ops]);
+  }, [camRows, camName, tsEff, showCorners, worker, ops, undistort, mapXY?.width, mapXY?.height, marker?.x, marker?.y, marker?.color, marker?.cross]);
 
   // Respond to namespace updates; only adopt value for this cam
   useEffect(() => {
@@ -159,7 +223,11 @@ export default function CheckerboardEnhancePreview({
         <b style={{ minWidth: 80 }}>{camName || "(cam)"}</b>
         <label className="row" style={{ gap: 6 }}>
           Frame
-          <select value={ts} onChange={(e) => setTs(e.target.value)} disabled={tsList.length === 0}>
+          <select
+            value={typeof tsValue === "string" ? tsValue : ts}
+            onChange={(e) => (onTsChange ? onTsChange(e.target.value) : setTs(e.target.value))}
+            disabled={tsList.length === 0}
+          >
             {tsList.map((t) => (
               <option key={t} value={t}>
                 {t}
@@ -219,7 +287,23 @@ export default function CheckerboardEnhancePreview({
         </label>
       </div>
       <div className="canvasWrap" style={{ border: "1px solid #333", borderRadius: 4 }}>
-        <canvas ref={canvasRef} />
+        <canvas
+          ref={canvasRef}
+          style={{ cursor: onClickOriginal ? "crosshair" : undefined }}
+          onClick={(ev) => {
+            if (!onClickOriginal) return;
+            const c = canvasRef.current;
+            if (!c) return;
+            const rect = c.getBoundingClientRect();
+            const cx = (ev.clientX - rect.left) * (c.width / Math.max(1, rect.width));
+            const cy = (ev.clientY - rect.top) * (c.height / Math.max(1, rect.height));
+            const scale = lastScaleRef.current || 1;
+            const { w, h } = lastSizeRef.current;
+            const ox = Math.max(0, Math.min(w - 1e-6, cx / scale));
+            const oy = Math.max(0, Math.min(h - 1e-6, cy / scale));
+            onClickOriginal(ox, oy);
+          }}
+        />
       </div>
       <div style={{ fontSize: 12, opacity: 0.8 }}>
         {busyDetect ? "Detecting…" : found == null ? "" : found ? "Corners found" : "Corners not found"}
@@ -235,6 +319,21 @@ function drawPoint(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.beginPath();
   ctx.arc(x, y, 2.0, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function drawMarker(ctx: CanvasRenderingContext2D, x: number, y: number, cross: boolean) {
+  // small circle
+  ctx.beginPath();
+  ctx.arc(x, y, 5, 0, Math.PI * 2);
+  ctx.stroke();
+  if (cross) {
+    ctx.beginPath();
+    ctx.moveTo(x - 7, y);
+    ctx.lineTo(x + 7, y);
+    ctx.moveTo(x, y - 7);
+    ctx.lineTo(x, y + 7);
+    ctx.stroke();
+  }
 }
 
 // order invariant is enforced in config normalization; no local checks

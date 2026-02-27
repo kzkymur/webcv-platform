@@ -16,9 +16,11 @@ export default function Sidebar({ onSelectFile }: { onSelectFile?: (f: FileEntry
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <Link href="/" style={{ fontWeight: 700, letterSpacing: 0.2, fontSize: 20 }}>webcv-platform</Link>
       </div>
-      <div className="panel">
+      <div className="panel" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <h3>File System</h3>
-        <FileSystemBrowser onSelect={onSelectFile || (() => {})} />
+        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+          <FileSystemBrowser onSelect={onSelectFile || (() => {})} />
+        </div>
       </div>
     </aside>
   );

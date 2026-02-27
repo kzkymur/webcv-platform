@@ -38,14 +38,11 @@ export default function Page() {
                   <b>2. Calibrate Scenes</b>
                 </a>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
-                  Detect chessboard corners and compute per‑camera
-                  intrinsics/extrinsics (OpenCV via WebAssembly). Generates
-                  per‑camera undistortion maps and inter‑camera homographies in
-                  the undistorted domain. Outputs are stored under{" "}
-                  <code>2-calibrate-scenes/&lt;runTs&gt;/</code> such as
-                  per‑camera <code>cam-&lt;name&gt;_calibration.json</code>,
-                  per‑camera <code>cam-&lt;name&gt;_remapXY.xy</code>, and
-                  per‑pair <code>cam-A_to_cam-B_H_undist.json</code>.
+                  Detect chessboard corners and compute per‑camera intrinsics
+                  and undistortion maps (single‑camera workflow). Outputs are
+                  stored under <code>2-calibrate-scenes/&lt;runTs&gt;/</code> such
+                  as per‑camera <code>cam-&lt;name&gt;_calibration.json</code> and
+                  <code>cam-&lt;name&gt;_remapXY.xy</code>.
                 </div>
               </div>
             </div>
@@ -89,6 +86,20 @@ export default function Page() {
                   is enabled, clicking on the canvas maps that pixel to galvo
                   coordinates and moves the mirrors; adjust laser power with the
                   percentage control (0–100).
+                </div>
+              </div>
+            </div>
+            <div className="panel">
+              <div className="col" style={{ gap: 6 }}>
+                <a href="/6-cameras-homography">
+                  <b>6. Cameras Homography</b>
+                </a>
+                <div style={{ opacity: 0.85, fontSize: 14 }}>
+                  Choose Camera A/B and a common timestamp; previews show
+                  undistorted frames (using page 2 maps). Computes a homography
+                  in the undistorted domain from the single selected pair and
+                  saves frames and JSON under
+                  <code>6-cameras-homography/&lt;runTs&gt;/</code>.
                 </div>
               </div>
             </div>

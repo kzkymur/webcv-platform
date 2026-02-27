@@ -1,0 +1,35 @@
+- 6. カメラ間ホモグラフィ（同期 1 ペア）
+  - パス：/6-cameras-homography
+  - 目的：ページ2で生成した各カメラの undistortion map を用いて、保存済みの同期ショット（1-syncro-checkerboard_shots）の中から同一タイムスタンプの1ペアを選び、undist 領域でホモグラフィ H を推定する。
+- プレビュー：
+    - カメラA/Bを選択すると、両カメラで共通するタイムスタンプのみが各プレビューの Frame セレクトに表示される。
+    - ページ2の Pre‑Detect Preview と同じ UI（Contrast / Invert / Show corners）を実装。角検出オーバーレイは undist 画像に対して行う。
+    - 選択中の ts は A/B のプレビュー間で同期される。
+  - 実行：
+    - ボタン押下で、表示中（undist）のA/Bフレームで角検出→ undist 領域で H を計算。
+    - 保存先（画像・JSON）：`6-cameras-homography/<runTs>/`
+      - `cam-<A>_undist.rgb`, `cam-<B>_undist.rgb`
+      - `cam-<A>_to_cam-<B>_H_undist.json` と `cam-<B>_to_cam-<A>_H_undist.json`
+      - JSON には `{ homography3x3, metrics: { rmse, inliers, total, selectedTs } }` を含む
+  - 備考：フレームは1ペアのみを使用。リストからの複数選択UIは設置しない。
+
+  - プレビュー間の座標変換（クリック対応、2026-02-27 追加）：
+    - 前提：上記の実行で `H(A→B)` と `H(B→A)` が算出済みのときに有効（未算出時は何もしない）。
+    - 動作：どちらかのプレビュー画像をクリックすると、
+      - クリックした側の画像にその座標を丸印でプロット（1画像あたり常に1点のみ）。
+      - もう一方の画像には、対応するホモグラフィで変換した座標を同時にプロットする。
+        - Aをクリックした場合：`pB = H(A→B) · pA`（同次座標で w で正規化）。
+        - Bをクリックした場合：`pA = H(B→A) · pB`（同上）。
+    - 座標系：undist 画像のピクセル座標（原点は左上、x 右・y 下）。小数座標はそのまま描画してよい。
+    - 上書き：再度どちらかをクリックすると両画像の点を上書き（同時に1ペアだけを保持）。
+    - 範囲外：変換結果が相手画像の範囲外なら、その画像にはプロットせず、ログフッターに警告（`Mapped point out of bounds`）。
+    - クリア条件：カメラ変更／タイムスタンプ変更／ホモグラフィ再計算時に自動クリア。手動クリアは将来の追加ボタンで対応可。
+    - 表示：マーカーは視認性の高い小円＋十字（半径 ~5px、線幅 ~2px）。色は A 側=シアン、B 側=マゼンタ（固定）。
+
+  - 既存ホモグラフィの選択（2026-02-27 追加）：
+    - 「Pre‑Detect Preview (undistorted)」見出し右にセレクトを配置。現在の A→B 組み合わせにマッチする JSON（`cam-<A>_to_cam-<B>_H_undist.json`）を列挙する。
+      - 検索場所：`6-cameras-homography/<runTs>/` と `2-calibrate-scenes/<runTs>/` の両方。
+      - ラベルにはフォルダ名・runTs・`metrics.rmse`・`metrics.inliers/total`・`metrics.selectedTs` を表示（存在すれば）。
+    - 選択すると A→B をロードし、同フォルダに B→A があればそれを、無ければ逆行列で代用して B→A をセットする。クリック対応のマーカーはクリアされる。
+    - 永続化：名前空間付き localStorage に `homographyByPair["<A>|<B>"] = <path>` として保存。ページ再訪時は保存値が存在すればそれを自動選択、無ければ最新を既定選択とする。
+    - Run 実行後は、その実行で保存した A→B の JSON を自動選択状態に更新する。

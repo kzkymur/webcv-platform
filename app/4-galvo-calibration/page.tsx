@@ -11,23 +11,18 @@ import { useCameraIds } from "@/shared/hooks/useCameraStreams";
 import { formatTimestamp } from "@/shared/util/time";
 import { WasmWorkerClient } from "@/shared/wasm/client";
 import HeaderBar from "@/shared/components/GalvoCalibrationHeaderBar";
-import UndistList from "@/shared/components/GalvoCalibrationUndistList";
 import { Preview, type PreviewHandle } from "@/shared/components/GalvoCalibrationPreview";
 import RunPanel from "@/shared/components/GalvoCalibrationRunPanel";
-import LogPanel from "@/shared/components/GalvoCalibrationLogPanel";
+import LogFooterShell from "@/components/LogFooterShell";
 import type { GridParams, Range, Timing, UndistItem } from "@/shared/calibration/galvoTypes";
+import { sanitize } from "@/shared/util/strings";
 
 // Shared types are in app/shared/calibration/galvoTypes
 
 // loadRemapXY and identity inter-map shared via app/shared/util/remap
 
 export default function Page() {
-  const [items, setItems] = useState<UndistItem[]>([]);
-  const [selKey, setSelKey] = useState<string>("");
-  const selected = useMemo(
-    () => items.find((x) => x.mapXYPath === selKey) || null,
-    [items, selKey]
-  );
+  const [selected, setSelected] = useState<UndistItem | null>(null);
 
   // Camera device selection
   const [camIds] = useCameraIds();
@@ -94,28 +89,28 @@ export default function Page() {
     };
   }, [camIds]);
 
-  // Reset overlay when undistortion map selection changes
+  // Reset overlay when undistortion map changes
   useEffect(() => {
     spotsRef.current = { pts: [], last: null };
-  }, [selKey]);
+  }, [selected?.mapXYPath]);
 
-  // Discover undistortion maps
+  // Auto-select latest undistortion map for the chosen camera (by device label sanitized)
   useEffect(() => {
     (async () => {
+      if (!deviceId) { setSelected(null); return; }
+      const label = devices.find((d) => d.deviceId === deviceId)?.label || deviceId;
+      const camName = sanitize(label);
       const files = await listFiles();
-      const xy = files.filter(
-        (f) => f.path.startsWith("2-calibrate-scenes/") && /_remapXY\.xy$/.test(f.path)
-      );
-      const out: UndistItem[] = [];
+      const xy = files.filter((f) => f.path.startsWith("2-calibrate-scenes/") && /_remapXY\.xy$/.test(f.path));
+      const matches: UndistItem[] = [];
       for (const f of xy) {
         const m = f.path.match(/^2-calibrate-scenes\/([^/]+)\/cam-(.+?)_remapXY\.xy$/);
-        if (m) out.push({ runTs: m[1], cam: m[2], mapXYPath: f.path });
+        if (m && m[2] === camName) matches.push({ runTs: m[1], cam: m[2], mapXYPath: f.path });
       }
-      out.sort((a, b) => (a.runTs < b.runTs ? 1 : -1));
-      setItems(out);
-      setSelKey((prev) => (prev && out.some((x) => x.mapXYPath === prev) ? prev : out[0]?.mapXYPath || ""));
+      matches.sort((a, b) => (a.runTs < b.runTs ? 1 : -1));
+      setSelected(matches[0] || null);
     })();
-  }, []);
+  }, [deviceId, devices]);
 
   // captureFrame now lives in <Preview /> via ref
 
@@ -342,10 +337,8 @@ export default function Page() {
         }}
         fps={fps}
       />
-      <main className="main">
+      <LogFooterShell log={log} title="Log">
         <div className="col" style={{ gap: 16 }}>
-          <UndistList items={items} selKey={selKey} onSelect={setSelKey} selected={selected} />
-
           <Preview
             ref={previewRef}
             deviceId={deviceId}
@@ -373,11 +366,8 @@ export default function Page() {
             timing={timing}
             setTiming={setTiming}
             busy={busy}
-            canRun={!!selected && serialOk}
-            disabledReason={!selected
-              ? "Select an undistortion map (from step 2)"
-              : (!serialOk ? "Connect Microcontroller first" : undefined)
-            }
+            canRun={serialOk}
+            disabledReason={!serialOk ? "Connect Microcontroller first" : undefined}
             onStart={runCalibration}
             onCancel={() => {
               cancelRef.current = true;
@@ -385,9 +375,8 @@ export default function Page() {
             }}
           />
 
-          <LogPanel log={log} />
         </div>
-      </main>
+      </LogFooterShell>
     </>
   );
 }

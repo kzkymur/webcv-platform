@@ -89,6 +89,29 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
     };
   }, [selected?.mapXYPath]);
 
+  // Fallback: no undistortion map → identity for both passes using video dimensions
+  useEffect(() => {
+    let cancelled = false;
+    const r = rendererRef.current;
+    const v = videoRef.current;
+    if (!r || !v) return;
+    if (selected) return; // handled by the effect above
+    function applyIdentity() {
+      if (cancelled) return;
+      const w = v.videoWidth || 0;
+      const h = v.videoHeight || 0;
+      if (!w || !h) return;
+      const id = buildIdentityInterMap(w, h);
+      r.setUndistMapXY(id, { width: w, height: h });
+      r.setInterMapXY(id, { width: w, height: h });
+    }
+    if (v.readyState >= 2) applyIdentity();
+    else v.addEventListener("loadedmetadata", applyIdentity, { once: true });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.mapXYPath, stream]);
+
   // Clear overlay when toggled off
   useEffect(() => {
     const can = overlayCanvasRef.current;
@@ -183,11 +206,10 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
 
   return (
     <section className="col" style={{ gap: 8 }}>
-      <h4>Preview (undistorted)</h4>
+      <h4>Preview</h4>
       <div className="row" style={{ gap: 12, alignItems: "center" }}>
         <button
           onClick={async () => {
-            if (!selected) return;
             const r = rendererRef.current;
             if (!r) return;
             const rgba = r.readPixels();
@@ -205,7 +227,7 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
             } as FileEntry);
             alert(`Saved: ${path}`);
           }}
-          disabled={!selected}
+
         >
           Save Frame
         </button>
@@ -226,6 +248,20 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
         <canvas ref={canvasRef} />
         <canvas ref={overlayCanvasRef} className="canvasOverlay" />
       </div>
+      {!selected && (
+        <div
+          style={{
+            marginTop: 8,
+            padding: "6px 8px",
+            border: "1px solid #e8b40066",
+            background: "#e8b40011",
+            borderRadius: 6,
+            fontSize: 13,
+          }}
+        >
+          ⚠︎ No undistortion map found for this camera — showing raw feed.
+        </div>
+      )}
       <video ref={videoRef} style={{ display: "none" }} />
     </section>
   );

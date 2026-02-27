@@ -12,12 +12,9 @@ import { useCameraIds, useCameraStream } from "@/shared/hooks/useCameraStreams";
 import { loadRemapXY, buildIdentityInterMap } from "@/shared/util/remap";
 import { invertHomography, applyHomography } from "@/shared/util/homography";
 import { crampGalvoCoordinate } from "@/shared/util/calcHomography";
+import { sanitize } from "@/shared/util/strings";
 
-type UndistItem = {
-  runTs: string;
-  cam: string; // single camera undistortion map
-  mapXYPath: string;
-};
+type UndistItem = { runTs: string; cam: string; mapXYPath: string };
 
 type HItem = {
   ts: string;
@@ -25,9 +22,7 @@ type HItem = {
 };
 
 export default function Page() {
-  const [items, setItems] = useState<UndistItem[]>([]);
-  const [selKey, setSelKey] = useState<string>("");
-  const selected = useMemo(() => items.find((x) => x.mapXYPath === selKey) || null, [items, selKey]);
+  const [selected, setSelected] = useState<UndistItem | null>(null);
 
   const [hItems, setHItems] = useState<HItem[]>([]);
   const [hSel, setHSel] = useState<string>("");
@@ -122,7 +117,47 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [selKey]);
+  }, [selected?.mapXYPath]);
+
+  // Fallback: no undistortion map → identity for both passes using video dimensions
+  useEffect(() => {
+    let cancelled = false;
+    const r = rendererRef.current;
+    const v = videoRef.current;
+    if (!r || !v) return;
+    if (selected) return; // handled by the effect above
+    function applyIdentity() {
+      if (cancelled) return;
+      const w = v.videoWidth || 0;
+      const h = v.videoHeight || 0;
+      if (!w || !h) return;
+      const id = buildIdentityInterMap(w, h);
+      r.setUndistMapXY(id, { width: w, height: h });
+      r.setInterMapXY(id, { width: w, height: h });
+      drawOverlay();
+    }
+    if (v.readyState >= 2) applyIdentity();
+    else v.addEventListener("loadedmetadata", applyIdentity, { once: true });
+    return () => { cancelled = true; };
+  }, [selected?.mapXYPath, stream]);
+
+  // Auto-select latest undistortion map by camera (device label sanitized)
+  useEffect(() => {
+    (async () => {
+      if (!deviceId) { setSelected(null); return; }
+      const label = devices.find((d) => d.deviceId === deviceId)?.label || deviceId;
+      const camName = sanitize(label);
+      const files = await listFiles();
+      const xy = files.filter((f) => f.path.startsWith("2-calibrate-scenes/") && /_remapXY\.xy$/.test(f.path));
+      const matches: UndistItem[] = [];
+      for (const f of xy) {
+        const m = f.path.match(/^2-calibrate-scenes\/([^/]+)\/cam-(.+?)_remapXY\.xy$/);
+        if (m && m[2] === camName) matches.push({ runTs: m[1], cam: m[2], mapXYPath: f.path });
+      }
+      matches.sort((a, b) => (a.runTs < b.runTs ? 1 : -1));
+      setSelected(matches[0] || null);
+    })();
+  }, [deviceId, devices]);
 
   // Render loop
   useEffect(() => {
@@ -150,20 +185,10 @@ export default function Page() {
     };
   }, []);
 
-  // Discover undistortion maps and homographies
+  // Discover homographies (undistortion map is auto-selected separately)
   useEffect(() => {
     (async () => {
       const files = await listFiles();
-      const xy = files.filter((f) => f.path.startsWith("2-calibrate-scenes/") && /_remapXY\.xy$/.test(f.path));
-      const out: UndistItem[] = [];
-      for (const f of xy) {
-        const m = f.path.match(/^2-calibrate-scenes\/([^/]+)\/cam-(.+?)_remapXY\.xy$/);
-        if (m) out.push({ runTs: m[1], cam: m[2], mapXYPath: f.path });
-      }
-      out.sort((a, b) => (a.runTs < b.runTs ? 1 : -1));
-      setItems(out);
-      setSelKey((prev) => (prev && out.some((x) => x.mapXYPath === prev) ? prev : out[0]?.mapXYPath || ""));
-
       const hs = files.filter((f) => f.path.startsWith("4-galvo-calibration/") && /-homography\.json$/.test(f.path));
       const hout: HItem[] = [];
       for (const f of hs) {
@@ -318,28 +343,6 @@ export default function Page() {
       <main className="main">
         <div className="col" style={{ gap: 16 }}>
           <section className="col" style={{ gap: 8 }}>
-            <h4>Undistortion Map (Select one)</h4>
-            <div className="tree" style={{ maxHeight: 200, overflow: "auto" }}>
-              {items.map((p) => (
-                <div
-                  key={p.mapXYPath}
-                  className={`file ${p.mapXYPath === selKey ? "active" : ""}`}
-                  style={{ display: "flex", gap: 8, alignItems: "center" }}
-                  onClick={() => setSelKey(p.mapXYPath)}
-                  title={p.mapXYPath}
-                >
-                  <span style={{ width: 220, fontFamily: "monospace" }}>{p.runTs}</span>
-                  <span>Undistort: {p.cam}</span>
-                </div>
-              ))}
-              {items.length === 0 && (
-                <div style={{ opacity: 0.7 }}>No undistortion maps found (generate in /2).</div>
-              )}
-            </div>
-            {selected && (<div style={{ opacity: 0.8, fontSize: 13 }}>XY: {selected.mapXYPath}</div>)}
-          </section>
-
-          <section className="col" style={{ gap: 8 }}>
             <h4>Homography (Select one)</h4>
             <div className="tree" style={{ maxHeight: 160, overflow: "auto" }}>
               {hItems.map((h) => (
@@ -399,6 +402,20 @@ export default function Page() {
               <canvas ref={canvasRef} onClick={onCanvasClick} />
               <canvas ref={overlayCanvasRef} className="canvasOverlay" />
             </div>
+            {!selected && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "6px 8px",
+                  border: "1px solid #e8b40066",
+                  background: "#e8b40011",
+                  borderRadius: 6,
+                  fontSize: 13,
+                }}
+              >
+                ⚠︎ No undistortion map found for this camera — showing raw feed.
+              </div>
+            )}
             <video ref={videoRef} style={{ display: "none" }} />
           </section>
         </div>
