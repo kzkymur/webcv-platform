@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RemapRenderer } from "@/shared/gl/remap";
-import { getFile } from "@/shared/db";
+import { getFile, listFiles } from "@/shared/db";
 import { useCameraIds } from "@/shared/hooks/useCameraStreams";
 import { useVideoSource } from "@/shared/hooks/useVideoSource";
 import { listMergedVideoInputs } from "@/shared/util/devices";
@@ -47,18 +47,19 @@ async function findUndistMapXY(
   runTs: string,
   camName: string
 ): Promise<string | null> {
-  // Preferred (slash only after timestamp)
-  const pNew = `2-calibrate-scenes/${runTs}/cam-${sanitize(camName)}_remapXY.xy`;
-  const fNew = await getFile(pNew);
-  if (fNew) return pNew;
-  // Backward compat: nested per‑cam dir (older build)
-  const pMid = `2-calibrate-scenes/${runTs}/cam-${sanitize(camName)}/remapXY.xy`;
-  const fMid = await getFile(pMid);
-  if (fMid) return pMid;
-  // Legacy flat path (pre-folder change)
-  const pOld = `2-calibrate-scenes/${runTs}_cam-${sanitize(camName)}_remapXY.xy`;
-  const fOld = await getFile(pOld);
-  return fOld ? pOld : null;
+  const files = await listFiles();
+  const s = sanitize(camName);
+  // Type-gated search; allow multiple historical path layouts
+  const cand = files
+    .filter((f) => f.type === "remapXY" && f.path.startsWith("2-calibrate-scenes/"))
+    .map((f) => f.path)
+    .filter((p) =>
+      new RegExp(`^2-calibrate-scenes/${runTs}/cam-${s}_remapXY\\.xy$`).test(p) ||
+      new RegExp(`^2-calibrate-scenes/${runTs}/cam-${s}/remapXY\\.xy$`).test(p) ||
+      new RegExp(`^2-calibrate-scenes/${runTs}_cam-${s}_remapXY\\.xy$`).test(p)
+    )
+    .sort();
+  return cand[cand.length - 1] || null;
 }
 
 export default function RemapPreview({

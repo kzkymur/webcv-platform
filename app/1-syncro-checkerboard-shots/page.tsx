@@ -5,7 +5,7 @@ export const dynamic = "error";
 import { useEffect, useRef, useState, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useCameraIds } from "@/shared/hooks/useCameraStreams";
-import { putFile } from "@/shared/db";
+import { putFile, putMany } from "@/shared/db";
 import type { FileEntry } from "@/shared/db/types";
 import {
   readNamespacedStore,
@@ -52,34 +52,30 @@ export default function Page() {
     try {
       // Build timestamp once to ensure files from the same trigger share it
       const ts = formatTimestamp(new Date());
-      const tasks: Promise<void>[] = [];
+      const entries: FileEntry[] = [];
       for (const id of ids) {
         if (!id) continue;
         const h = panelsRef.current.get(id);
         if (!h) continue;
-        tasks.push(
-          (async () => {
-            const perFmt = fmtById[id] || "rgba8";
-            const shot = await h.capture(perFmt);
-            if (!shot) return;
-            const name = sanitize(shot.label || id);
-            const baseDir = SHOTS_DIR;
-            const ext = perFmt === "gray8" ? ".gray" : ".rgb"; // store with explicit extension
-            // New nested structure: 1-syncro-checkerboard_shots/<ts>/cam-<name>.<ext>
-            const filePath = `${baseDir}/${ts}/cam-${name}${ext}`;
-            const entry: FileEntry = {
-              path: filePath,
-              type: perFmt === "gray8" ? "grayscale-image" : "rgb-image",
-              data: shot.data.buffer as ArrayBuffer,
-              width: shot.width,
-              height: shot.height,
-              channels: 4, // stored as RGBA for both modes
-            };
-            await putFile(entry);
-          })()
-        );
+        const perFmt = fmtById[id] || "rgba8";
+        const shot = await h.capture(perFmt);
+        if (!shot) continue;
+        const name = sanitize(shot.label || id);
+        const baseDir = SHOTS_DIR;
+        const ext = perFmt === "gray8" ? ".gray" : ".rgb"; // store with explicit extension
+        // New nested structure: 1-syncro-checkerboard_shots/<ts>/cam-<name>.<ext>
+        const filePath = `${baseDir}/${ts}/cam-${name}${ext}`;
+        entries.push({
+          path: filePath,
+          type: perFmt === "gray8" ? "grayscale-image" : "rgb-image",
+          data: shot.data.buffer as ArrayBuffer,
+          width: shot.width,
+          height: shot.height,
+          channels: 4, // stored as RGBA for both modes
+        } satisfies FileEntry);
       }
-      await Promise.all(tasks);
+      if (entries.length === 1) await putFile(entries[0]);
+      else if (entries.length > 1) await (putMany ? putMany(entries) : Promise.all(entries.map((e) => putFile(e))));
     } finally {
       setBusy(false);
     }

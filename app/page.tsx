@@ -103,6 +103,21 @@ export default function Page() {
                 </div>
               </div>
             </div>
+            <div className="panel">
+              <div className="col" style={{ gap: 6 }}>
+                <a href="/7-galvo-figure-management">
+                  <b>7. Galvo Figure Management</b>
+                </a>
+                <div style={{ opacity: 0.85, fontSize: 14 }}>
+                  Create and manage target polygons directly in the galvo plane.
+                  Click on the preview to add vertices (auto‑closed polygon) and
+                  save as <code>7-galvo-figure-management/&lt;timestamp&gt;.fig</code>
+                  with type <code>figure</code>. Supports both live camera (with
+                  the latest per‑camera undistortion map) and still images; uses
+                  a selected homography only for projection/preview.
+                </div>
+              </div>
+            </div>
           </section>
           {activeFile && (
             <section>

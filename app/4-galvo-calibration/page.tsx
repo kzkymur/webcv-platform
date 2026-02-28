@@ -5,6 +5,7 @@ export const dynamic = "error";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { listFiles, putFile } from "@/shared/db";
+import { jsonFile } from "@/shared/util/fileEntry";
 import type { FileEntry } from "@/shared/db/types";
 import { SerialCommunicator } from "@/shared/module/serialInterface";
 import { useCameraIds } from "@/shared/hooks/useCameraStreams";
@@ -100,7 +101,7 @@ export default function Page() {
       const label = devices.find((d) => d.deviceId === deviceId)?.label || deviceId;
       const camName = sanitize(label);
       const files = await listFiles();
-      const xy = files.filter((f) => f.path.startsWith("2-calibrate-scenes/") && /_remapXY\.xy$/.test(f.path));
+      const xy = files.filter((f) => f.type === "remapXY" && f.path.startsWith("2-calibrate-scenes/"));
       const matches: UndistItem[] = [];
       for (const f of xy) {
         const m = f.path.match(/^2-calibrate-scenes\/([^/]+)\/cam-(.+?)_remapXY\.xy$/);
@@ -296,9 +297,8 @@ export default function Page() {
           runTs: selected.runTs,
         },
       };
-      const json = new TextEncoder().encode(JSON.stringify(out, null, 2));
       const homPath = `4-galvo-calibration/${ts}-homography.json`;
-      await putFile({ path: homPath, type: "other", data: json.buffer as ArrayBuffer } as FileEntry);
+      await putFile(jsonFile(homPath, out, "homography-json"));
       appendLog(`Saved homography: ${homPath}`);
     } else {
       appendLog("Insufficient points for homography (need ≥ 4).");

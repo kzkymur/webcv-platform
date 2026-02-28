@@ -4,9 +4,9 @@ export const dynamic = "error";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import { getFile, listFiles, putFile } from "@/shared/db";
+import { getFile, listFiles, putFile, putMany } from "@/shared/db";
 import { WasmWorkerClient } from "@/shared/wasm/client";
-import { fileToRGBA } from "@/shared/util/fileEntry";
+import { fileToRGBA, jsonFile } from "@/shared/util/fileEntry";
 import { parseShotKey } from "@/shared/util/shots";
 import { sanitize } from "@/shared/util/strings";
 import { loadRemapXY } from "@/shared/util/remap";
@@ -61,7 +61,10 @@ export default function Page() {
   useEffect(() => {
     (async () => {
       const files = await listFiles();
-      const chk = files.filter((f) => f.path.startsWith("1-syncro-checkerboard_shots/"));
+      // Gate by image types to avoid picking up non-shot artifacts
+      const chk = files.filter(
+        (f) => (f.type === "rgb-image" || f.type === "grayscale-image") && f.path.startsWith("1-syncro-checkerboard_shots/")
+      );
       const map = new Map<string, ShotRow>();
       const cams = new Set<string>();
       for (const f of chk) {
@@ -137,7 +140,7 @@ export default function Page() {
     const files = await listFiles();
     const name = sanitize(cam);
     const candidates = files
-      .filter((f) => /^2-calibrate-scenes\//.test(f.path) && new RegExp(`/cam-${name}_remapXY\\.xy$`).test(f.path))
+      .filter((f) => f.type === "remapXY" && /^2-calibrate-scenes\//.test(f.path) && new RegExp(`/cam-${name}_remapXY\\.xy$`).test(f.path))
       .map((f) => f.path)
       .sort();
     const latest = candidates[candidates.length - 1];
@@ -194,19 +197,22 @@ export default function Page() {
     // Save frames and JSON under 6-cameras-homography
     const runTs = formatTimestamp(new Date());
     const base = `6-cameras-homography/${runTs}`;
-    await putFile({ path: `${base}/cam-${sanitize(camA)}_undist.rgb`, type: "rgb-image", data: imgA.rgba.buffer as ArrayBuffer, width: imgA.width, height: imgA.height, channels: 4 });
-    await putFile({ path: `${base}/cam-${sanitize(camB)}_undist.rgb`, type: "rgb-image", data: imgB.rgba.buffer as ArrayBuffer, width: imgB.width, height: imgB.height, channels: 4 });
-    appendLog(`Saved undist frames: ${base}/cam-${sanitize(camA)}_undist.rgb, cam-${sanitize(camB)}_undist.rgb`);
-
-    const payload = { homography3x3: H, metrics: { rmse, inliers, total, selectedTs: ts } };
     const a2bPath = `${base}/cam-${sanitize(camA)}_to_cam-${sanitize(camB)}_H_undist.json`;
-    await putFile({ path: a2bPath, type: "other", data: new TextEncoder().encode(JSON.stringify(payload, null, 2)).buffer as ArrayBuffer });
+    const b2aPath = `${base}/cam-${sanitize(camB)}_to_cam-${sanitize(camA)}_H_undist.json`;
+    const payload = { homography3x3: H, metrics: { rmse, inliers, total, selectedTs: ts }, pair: { from: sanitize(camA), to: sanitize(camB) } };
     // Also save reverse: B -> A (dest=A, src=B)
     const Hrev = await wrk.cvCalcHomography(resA.points, resB.points);
     const HrevArr = Array.from(Hrev.H);
-    const payloadRev = { homography3x3: HrevArr, metrics: { rmse /* symmetric approx */, inliers, total, selectedTs: ts } };
-    const b2aPath = `${base}/cam-${sanitize(camB)}_to_cam-${sanitize(camA)}_H_undist.json`;
-    await putFile({ path: b2aPath, type: "other", data: new TextEncoder().encode(JSON.stringify(payloadRev, null, 2)).buffer as ArrayBuffer });
+    const payloadRev = { homography3x3: HrevArr, metrics: { rmse /* symmetric approx */, inliers, total, selectedTs: ts }, pair: { from: sanitize(camB), to: sanitize(camA) } };
+    const batch = [
+      { path: `${base}/cam-${sanitize(camA)}_undist.rgb`, type: "rgb-image", data: imgA.rgba.buffer as ArrayBuffer, width: imgA.width, height: imgA.height, channels: 4 },
+      { path: `${base}/cam-${sanitize(camB)}_undist.rgb`, type: "rgb-image", data: imgB.rgba.buffer as ArrayBuffer, width: imgB.width, height: imgB.height, channels: 4 },
+      jsonFile(a2bPath, payload, "homography-json"),
+      jsonFile(b2aPath, payloadRev, "homography-json"),
+    ];
+    if (putMany) await putMany(batch as any);
+    else for (const e of batch) await putFile(e as any);
+    appendLog(`Saved undist frames and H JSONs under ${base}`);
     appendLog(`Saved H JSONs under ${base}`);
     // Update in‑memory homographies for click mapping
     setHAB(H);
@@ -265,7 +271,24 @@ export default function Page() {
     const sa = sanitize(a), sb = sanitize(b);
     const re6 = new RegExp(`^6-cameras-homography/[^/]+/cam-${sa}_to_cam-${sb}_H_undist\\.json$`);
     const re2 = new RegExp(`^2-calibrate-scenes/[^/]+/cam-${sa}_to_cam-${sb}_H_undist\\.json$`);
-    const paths = files.map((f) => f.path).filter((p) => re6.test(p) || re2.test(p)).sort();
+    const homos = files.filter((f) => f.type === "homography-json");
+    const paths: string[] = [];
+    for (const h of homos) {
+      // Prefer JSON-embedded pair metadata when present; fallback to path match
+      try {
+        const fe = await getFile(h.path);
+        if (fe?.data) {
+          const js = JSON.parse(new TextDecoder().decode(fe.data) || "{}");
+          const pair = js?.pair;
+          if (pair && pair.from === sa && pair.to === sb) {
+            paths.push(h.path);
+            continue;
+          }
+        }
+      } catch {}
+      if (re6.test(h.path) || re2.test(h.path)) paths.push(h.path);
+    }
+    paths.sort();
     const opts = await Promise.all(paths.map(async (p) => {
       let label = p;
       try {

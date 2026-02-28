@@ -6,6 +6,7 @@
     - 2. Calibrate Scenes — detects corners and computes per‑camera intrinsics/extrinsics and undistortion maps (single‑camera workflow). Writes artifacts under `2-calibrate-scenes/<runTs>/` including per‑camera `cam-<name>_calibration.json` and `cam-<name>_remapXY.xy`.
     - 6. Cameras Homography — select Camera A/B and a single shared timestamp; displays undistorted previews and computes a homography from that pair. Saves undist frames and JSON under `6-cameras-homography/<runTs>/`.
     - 3. Remap Realtime — lists detected remap fields (per‑camera undistortion) and previews the chosen field; live WebGL application is being integrated.
+    - 7. Galvo Figure Management — create and manage closed polygons in galvo space; save as `7-galvo-figure-management/<timestamp>.fig` with FileEntry.type `figure`. Works with live camera or still images; homography is used only for projection on preview.
   - Do not render a page-link banner above main content.
   - Sidebars (persistent):
     - Left: File System

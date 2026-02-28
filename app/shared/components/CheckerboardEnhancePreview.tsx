@@ -70,7 +70,7 @@ export default function CheckerboardEnhancePreview({
       const files = await listFiles();
       const name = sanitize(camName);
       const candidates = files
-        .filter((f) => /^2-calibrate-scenes\//.test(f.path) && new RegExp(`/cam-${name}_remapXY\\.xy$`).test(f.path))
+        .filter((f) => f.type === "remapXY" && /^2-calibrate-scenes\//.test(f.path) && new RegExp(`/cam-${name}_remapXY\\.xy$`).test(f.path))
         .map((f) => f.path)
         .sort();
       const latest = candidates[candidates.length - 1];

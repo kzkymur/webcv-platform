@@ -1,10 +1,39 @@
-- 7. レーザー照射平面上の照射対象管理機能
-  - Typescript Only
-  - パス：7-galvo-figure-management
-  - 5. 同様に、remap と homography ファイルから、Web カメラ画像の任意位置をガルバノスキャナの座標に変換可能になることを利用して、照射対象ポリゴンの作成を行う
-  - 作成した照射対象ポリゴンはファイルシステムに格納され、ロードや削除ができる
-  - UI は 5. に良く似た canvas と「作成開始」「作成終了」ボタンから成る（ともに英語）。
-  - ユーザは「作成開始」ボタンを押すと canvas は作成モードになる。
-  - 作成モード中の canvas の任意の箇所をユーザがタップすると、そのガルバノ平面上の座標が記録され、canvas 上にもその点が描画される。
-  - 記録された座標が 3 点以上になると、その点に囲われた多角形が canvas に表示されるようになる。点が増えた場合は新たに多角形を再計算し、四角形、五角形…という形で増えていく。
-  - 「作成終了」ボタンを押すと、ガルバノ座標上の点群が順序付きでファイルに保存される。ファイル名は「7-galvo-figure-management/日時.fig 」
+ - 7. レーザー照射平面上の照射対象管理機能
+   - Typescript Only
+   - Path: `/7-galvo-figure-management`
+   - 5 と同様に、remap + homography を用いて Web カメラ画像上の任意点をガルバノ座標へ変換し、クリックで多角形（照射対象）を作成する。
+   - 作成したポリゴンはファイルシステムに保存・ロード・削除が可能。
+
+## UI
+
+- Source: `Live Camera` / `Still Image`（英語）。
+  - Live: カメラ選択あり。デバイスラベルを sanitize した cam 名に一致する最新の undistortion map（`remapXY.xy`）を自動適用。
+  - Still: 画像ファイル（`rgb-image`/`grayscale-image`）を選択。プレビューは undist 前提で描画（簡潔化のため undist map は適用しない）。
+- Homography: `FileEntry.type === "homography-json"` の全ファイルから選択（デフォルトは最新）。
+- Create Start / Create End / Clear（英語）。
+  - Create Start で作成モードに入り、キャンバスクリックで点を追加。
+  - 3 点以上で自動的にクローズドポリゴンとして塗りつぶし＋輪郭描画。
+  - Create End で保存。
+
+## ファイル入出力
+
+- 保存先: `7-galvo-figure-management/<YYYY-MM-DD_HH-mm-ss>.fig`
+- FileEntry.type: `figure`
+- フォーマット（最小）:
+
+```
+{ "pointsGalvo": number[] } // [x1, y1, x2, y2, ...]
+```
+
+  - homography とは独立。図形の表現はガルバ平面座標のみを保持する。
+  - ロード時の描画は、選択中の homography（galvo→camera）で再投影し、キャンバス上に重畳する。
+
+## クリック座標の変換
+
+- キャンバス座標（camera/undist）→ ガルバ: `Hinv`（`invertHomography(H)`）を使用。
+- ガルバ → キャンバス: `H` を使用（ロード時の重畳）。
+
+## 備考
+
+- 画像プレビューは WebGL2 `RemapRenderer` を使用。still 画像にも対応するため `setSourceImage()` を追加（内部的に RGBA テクスチャにアップロード）。
+- Live かつ undistortion map が未検出の場合は identity マップでフォールバック。

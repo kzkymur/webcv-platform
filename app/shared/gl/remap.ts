@@ -106,6 +106,7 @@ export class RemapRenderer {
   private interDestSize: RemapDims | null = null; // A size (=canvas buffer size)
 
   private videoEl: HTMLVideoElement | null = null;
+  private staticSize: RemapDims | null = null; // when using setSourceImage
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = (this.gl = createGL(canvas));
@@ -138,6 +139,7 @@ export class RemapRenderer {
 
   setSourceVideo(video: HTMLVideoElement | null) {
     this.videoEl = video;
+    this.staticSize = null;
     if (!video) return;
     const gl = this.gl;
     if (!this.texVideo) this.texVideo = gl.createTexture();
@@ -147,6 +149,24 @@ export class RemapRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
+  }
+
+  // Provide a way to use a still RGBA image as the source.
+  // The texture is uploaded immediately and kept until replaced.
+  setSourceImage(rgba: Uint8Array | Uint8ClampedArray, width: number, height: number) {
+    const gl = this.gl;
+    if (!this.texVideo) this.texVideo = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.texVideo);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    // Mark static mode (no video element)
+    this.videoEl = null;
+    this.staticSize = { width, height };
   }
 
   // no orientation toggles in the original implementation
@@ -217,14 +237,17 @@ export class RemapRenderer {
     const gl = this.gl;
     const prog = this.prog;
     const v = this.videoEl;
-    if (!v || v.readyState < 2) return false;
+    const usingStatic = !v && !!this.staticSize;
+    if (!usingStatic && (!v || v.readyState < 2)) return false;
     if (!this.undistSize || !this.interDestSize) return false;
     if (!this.texVideo || !this.texUndist || !this.texUndistMapXY || !this.texInterMapXY) return false;
 
     // Update video texture
-    gl.bindTexture(gl.TEXTURE_2D, this.texVideo);
-    // Upload current frame; keep UNPACK_FLIP_Y disabled (we use top-left uv)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v);
+    if (v) {
+      gl.bindTexture(gl.TEXTURE_2D, this.texVideo);
+      // Upload current frame; keep UNPACK_FLIP_Y disabled (we use top-left uv)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v);
+    }
 
     // Common state
     gl.useProgram(prog);
@@ -244,7 +267,11 @@ export class RemapRenderer {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.texUndistMapXY);
     gl.uniform1i(locMapXY, 1);
-    gl.uniform2f(locSrcSize, v.videoWidth, v.videoHeight);
+    gl.uniform2f(
+      locSrcSize,
+      usingStatic ? this.staticSize!.width : v.videoWidth,
+      usingStatic ? this.staticSize!.height : v.videoHeight
+    );
     gl.uniform2f(locMapSrcSize, this.undistSize.width, this.undistSize.height);
     this.drawQuad();
 

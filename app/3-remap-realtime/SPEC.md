@@ -1,6 +1,19 @@
-- 3. 画素レベルのリアルタイムトランスフォーム確認ページ
-  - TypeScript の UI と WebGL
+ - 3. 画素レベルのリアルタイムトランスフォーム確認
+  - TypeScript + WebGL2（RemapRenderer）。
   - パス：/3-remap-realtime
-  - ファイルシステム上に存在する remap 系のファイルとカメラを選択することで、その remap を適用した後の映像をリアルタイムで確認できる。
-  - WebGL とシェーダーにより高速に処理することでリアルタイムレンダリングを実現する
-  - gl.readPixels による画像保存機能も提供する。
+  - 「Detected XY Maps」に `2-calibrate-scenes` 配下の `remapXY` を列挙し、選択したマップをライブ映像に適用してプレビューします。
+    - 認識パターン（実装準拠）：
+      - 単体 undist：`2-calibrate-scenes/<runTs>/cam-<cam>_remapXY.xy`
+        - 後方互換：`2-calibrate-scenes/<runTs>/cam-<cam>/remapXY.xy`、`2-calibrate-scenes/<runTs>_cam-<cam>_remapXY.xy`
+      - インター（将来/互換）：`2-calibrate-scenes/<runTs>/cam-<A>_to_cam-<B>_mappingXY.xy`（他、レガシーの canonical / per‑frame も認識）
+        - 現行パイプラインは H のみ出力で `mappingXY.xy` を生成しないため、通常は undist のみが候補になります。
+  - WebGL パイプライン（2 パス）：
+    - Pass1（undist）：ソース動画 × undist XY → FBO。
+    - Pass2（inter）：Pass1 出力 × inter XY → 画面（canvas）。
+    - マップは RG32F テクスチャ（[sx,sy]、px 単位）。`preserveDrawingBuffer=true` で `readPixels()` を安定化。
+  - ソースカメラ選択：Device Settings の選択を初期値として採用可能。「Expecting: …」に undist は `<cam>`、inter は `<B>` を表示。
+  - 画像保存：
+    - `gl.readPixels()` 結果を RGB 8-bit として保存。
+    - パス：
+      - inter：`3-remap-realtime/<ts>/cam-<B>_to_cam-<A>_preview.rgb`
+      - undist：`3-remap-realtime/<ts>/cam-<Cam>_undistorted_preview.rgb`

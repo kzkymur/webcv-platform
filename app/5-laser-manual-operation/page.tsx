@@ -157,7 +157,7 @@ export default function Page() {
       const label = devices.find((d) => d.deviceId === deviceId)?.label || deviceId;
       const camName = sanitize(label);
       const files = await listFiles();
-      const xy = files.filter((f) => f.path.startsWith("2-calibrate-scenes/") && /_remapXY\.xy$/.test(f.path));
+      const xy = files.filter((f) => f.type === "remapXY" && f.path.startsWith("2-calibrate-scenes/"));
       const matches: UndistItem[] = [];
       for (const f of xy) {
         const m = f.path.match(/^2-calibrate-scenes\/([^/]+)\/cam-(.+?)_remapXY\.xy$/);
@@ -198,7 +198,7 @@ export default function Page() {
   useEffect(() => {
     (async () => {
       const files = await listFiles();
-      const hs = files.filter((f) => f.path.startsWith("4-galvo-calibration/") && /-homography\.json$/.test(f.path));
+      const hs = files.filter((f) => f.type === "homography-json" && f.path.startsWith("4-galvo-calibration/"));
       const hout: HItem[] = [];
       for (const f of hs) {
         const m = f.path.match(/^4-galvo-calibration\/([^/]+)-homography\.json$/);

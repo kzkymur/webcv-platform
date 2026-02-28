@@ -46,8 +46,8 @@ export default function Page() {
   useEffect(() => {
     (async () => {
       const files = await listFiles();
-      const chk = files.filter((f) =>
-        f.path.startsWith("1-syncro-checkerboard_shots/")
+      const chk = files.filter(
+        (f) => (f.type === "rgb-image" || f.type === "grayscale-image") && f.path.startsWith("1-syncro-checkerboard_shots/")
       );
       const map = new Map<string, ShotRow>();
       const cams = new Set<string>();

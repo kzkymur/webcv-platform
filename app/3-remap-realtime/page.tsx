@@ -34,7 +34,7 @@ export default function Page() {
     (async () => {
       const files = await listFiles();
       const xy = files.filter(
-        (f) => f.path.startsWith("2-calibrate-scenes/") && /\.xy$/.test(f.path)
+        (f) => f.type === "remapXY" && f.path.startsWith("2-calibrate-scenes/")
       );
       const out: XYItem[] = [];
       for (const f of xy) {

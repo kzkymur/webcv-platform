@@ -92,17 +92,43 @@ async function ensureDB(): Promise<Database> {
 
 // Serialize persistence to OPFS to avoid concurrent write races
 let persistChain: Promise<void> = Promise.resolve();
-function persist(): Promise<void> {
+let persistTimer: number | null = null;
+function persistNow(): Promise<void> {
   if (!db) return Promise.resolve();
-  persistChain = persistChain.then(async () => {
-    const bytes = db!.export();
-    await saveToOPFS(bytes);
-  }).catch((e) => {
-    // Reset the chain on failure so subsequent writes are not blocked
-    persistChain = Promise.resolve();
-    throw e;
-  });
+  persistChain = persistChain
+    .then(async () => {
+      const bytes = db!.export();
+      await saveToOPFS(bytes);
+    })
+    .catch((e) => {
+      // Reset the chain on failure so subsequent writes are not blocked
+      persistChain = Promise.resolve();
+      throw e;
+    });
   return persistChain;
+}
+
+function schedulePersist(delayMs = 250): void {
+  if (typeof window === "undefined") { void persistNow(); return; }
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    // @ts-ignore – setTimeout in DOM returns number
+    persistTimer = null;
+  }
+  // @ts-ignore – setTimeout in DOM returns number
+  persistTimer = window.setTimeout(() => {
+    // @ts-ignore
+    persistTimer = null;
+    void persistNow();
+  }, delayMs);
+}
+
+// Flush on page hide to avoid losing recent writes
+if (typeof window !== "undefined") {
+  const flush = () => { if (persistTimer !== null) { clearTimeout(persistTimer); persistTimer = null; } void persistNow(); };
+  window.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+  window.addEventListener("pagehide", flush);
+  window.addEventListener("beforeunload", flush);
 }
 
 export async function putFile(entry: FileEntry): Promise<void> {
@@ -127,8 +153,45 @@ export async function putFile(entry: FileEntry): Promise<void> {
   } finally {
     stmt.free();
   }
-  await persist();
+  // Notify immediately (DB state is already updated in-memory), persist lazily
   notify("put", [entry.path]);
+  schedulePersist();
+}
+
+export async function putMany(entries: FileEntry[]): Promise<void> {
+  if (!entries.length) return;
+  const d = await ensureDB();
+  d.run("BEGIN TRANSACTION");
+  try {
+    const stmt = d.prepare(`INSERT INTO files(path, type, data, width, height, channels)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(path) DO UPDATE SET
+                              type=excluded.type,
+                              data=excluded.data,
+                              width=excluded.width,
+                              height=excluded.height,
+                              channels=excluded.channels`);
+    try {
+      for (const e of entries) {
+        stmt.run([
+          e.path,
+          e.type,
+          new Uint8Array(e.data),
+          e.width ?? null,
+          e.height ?? null,
+          e.channels ?? null,
+        ]);
+      }
+    } finally {
+      stmt.free();
+    }
+    d.run("COMMIT");
+  } catch (e) {
+    try { d.run("ROLLBACK"); } catch {}
+    throw e;
+  }
+  notify("batch", entries.map((e) => e.path));
+  schedulePersist();
 }
 
 export async function deleteMany(paths: string[]): Promise<number> {
@@ -154,8 +217,8 @@ export async function deleteMany(paths: string[]): Promise<number> {
     try { d.run("ROLLBACK"); } catch {}
     throw e;
   }
-  await persist();
   notify("batch", paths);
+  schedulePersist();
   return affected;
 }
 
@@ -167,11 +230,11 @@ export async function getFile(path: string): Promise<FileEntry | undefined> {
     if (stmt.step()) {
       const row = stmt.getAsObject();
       const data = row["data"] as Uint8Array;
-      const view = data.slice();
       return {
         path: row["path"] as string,
         type: row["type"] as any,
-        data: view.buffer as ArrayBuffer,
+        // Convert to standalone ArrayBuffer to avoid holding onto WASM memory
+        data: data.buffer.slice((data as any).byteOffset || 0, ((data as any).byteOffset || 0) + ((data as any).byteLength || data.length)),
         width: (row["width"] as number) ?? undefined,
         height: (row["height"] as number) ?? undefined,
         channels: (row["channels"] as number) ?? undefined,
@@ -191,23 +254,22 @@ export async function deleteFile(path: string): Promise<void> {
   } finally {
     stmt.free();
   }
-  await persist();
   notify("delete", [path]);
+  schedulePersist();
 }
 
 export async function listFiles(): Promise<FileEntry[]> {
   const d = await ensureDB();
-  const stmt = d.prepare(`SELECT path, type, data, width, height, channels FROM files ORDER BY path`);
+  // metadata-only listing (avoid pulling BLOBs for performance)
+  const stmt = d.prepare(`SELECT path, type, width, height, channels FROM files ORDER BY path`);
   const out: FileEntry[] = [];
   try {
     while (stmt.step()) {
       const row = stmt.getAsObject();
-      const blob = row["data"] as Uint8Array;
-      const view = blob.slice();
       out.push({
         path: row["path"] as string,
         type: row["type"] as any,
-        data: view.buffer as ArrayBuffer,
+        // data intentionally omitted for listings
         width: (row["width"] as number) ?? undefined,
         height: (row["height"] as number) ?? undefined,
         channels: (row["channels"] as number) ?? undefined,
@@ -217,4 +279,10 @@ export async function listFiles(): Promise<FileEntry[]> {
     stmt.free();
   }
   return out;
+}
+
+// Optional explicit flush for callers that need durability before proceeding
+export async function flush(): Promise<void> {
+  if (persistTimer !== null) { clearTimeout(persistTimer); persistTimer = null; }
+  await persistNow();
 }

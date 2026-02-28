@@ -1,4 +1,4 @@
-import type { FileEntry } from "@/shared/db/types";
+import type { FileEntry, FileType } from "@/shared/db/types";
 
 export function fileToRGBA(file: FileEntry): { rgba: Uint8ClampedArray; width: number; height: number } {
   const w = file.width ?? 0;
@@ -17,9 +17,9 @@ export function fileToRGBA(file: FileEntry): { rgba: Uint8ClampedArray; width: n
   return { rgba: u8, width: w, height: h };
 }
 
-export function jsonFile(path: string, obj: any): FileEntry {
+export function jsonFile(path: string, obj: any, type: FileType = "other"): FileEntry {
   const data = new TextEncoder().encode(JSON.stringify(obj));
-  return { path, type: "other", data: data.buffer as ArrayBuffer };
+  return { path, type, data: data.buffer as ArrayBuffer };
 }
 
 export function remapFile(path: string, arr: Float32Array, width: number, height: number): FileEntry {

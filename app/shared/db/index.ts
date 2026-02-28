@@ -3,10 +3,12 @@ import type { FileEntry } from "./types";
 
 type Driver = {
   putFile: (e: FileEntry) => Promise<void>;
+  putMany?: (arr: FileEntry[]) => Promise<void>;
   getFile: (p: string) => Promise<FileEntry | undefined>;
   deleteFile: (p: string) => Promise<void>;
   deleteMany?: (paths: string[]) => Promise<number>;
   listFiles: () => Promise<FileEntry[]>;
+  flush?: () => Promise<void>;
 };
 
 let driverP: Promise<Driver> | null = null;
@@ -21,6 +23,12 @@ async function ensureDriver(): Promise<Driver> {
 
 export async function putFile(e: FileEntry) {
   return (await ensureDriver()).putFile(e);
+}
+export async function putMany(arr: FileEntry[]) {
+  const d = await ensureDriver();
+  if (typeof d.putMany === "function") return d.putMany(arr);
+  // Fallback: sequential puts
+  for (const e of arr) await d.putFile(e);
 }
 export async function getFile(p: string) {
   return (await ensureDriver()).getFile(p);
@@ -41,4 +49,8 @@ export async function deleteMany(paths: string[]) {
 }
 export async function listFiles() {
   return (await ensureDriver()).listFiles();
+}
+export async function flush() {
+  const d = await ensureDriver();
+  if (typeof d.flush === "function") return d.flush();
 }

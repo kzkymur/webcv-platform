@@ -140,7 +140,8 @@ export async function computeAndSaveIntrinsics(
     await putFile(
       jsonFile(
         `2-calibrate-scenes/${runTs}/cam-${sanitize(camName)}_calibration.json`,
-        out
+        out,
+        "undist-json"
       )
     );
     return { intr, dist, rvecs, tvecs } as const;
@@ -224,7 +225,8 @@ export async function computeAndSaveInterMapping(
       await putFile(
         jsonFile(
           `2-calibrate-scenes/${runTs}/cam-${sanitize(camA)}_to_cam-${sanitize(camB)}_H_undist.json`,
-          { homography3x3: Array.from(best.H), metrics: { rmse: best.rmse, inliers: best.inliers, total: N, selectedTs: best.ts } }
+          { homography3x3: Array.from(best.H), metrics: { rmse: best.rmse, inliers: best.inliers, total: N, selectedTs: best.ts }, pair: { from: sanitize(camA), to: sanitize(camB) } },
+          "homography-json"
         )
       );
       // Also compute canonical B->A using the same selected ts (recompute H for B->A)
@@ -234,7 +236,8 @@ export async function computeAndSaveInterMapping(
       await putFile(
         jsonFile(
           `2-calibrate-scenes/${runTs}/cam-${sanitize(camB)}_to_cam-${sanitize(camA)}_H_undist.json`,
-          { homography3x3: Array.from(rev.H), metrics: { rmse: rev.rmse, inliers: rev.inliers, total: N, selectedTs: best.ts } }
+          { homography3x3: Array.from(rev.H), metrics: { rmse: rev.rmse, inliers: rev.inliers, total: N, selectedTs: best.ts }, pair: { from: sanitize(camB), to: sanitize(camA) } },
+          "homography-json"
         )
       );
       log(`✓ Selected best homography ts=${best.ts} (A→B inliers=${best.inliers}/${N}, rmse=${best.rmse.toFixed(3)}px). Saved A→B and B→A H_undist.json (no mappingXY).`);

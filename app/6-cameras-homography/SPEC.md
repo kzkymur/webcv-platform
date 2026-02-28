@@ -3,14 +3,16 @@
   - 目的：ページ2で生成した各カメラの undistortion map を用いて、保存済みの同期ショット（1-syncro-checkerboard_shots）の中から同一タイムスタンプの1ペアを選び、undist 領域でホモグラフィ H を推定する。
 - プレビュー：
     - カメラA/Bを選択すると、両カメラで共通するタイムスタンプのみが各プレビューの Frame セレクトに表示される。
-    - ページ2の Pre‑Detect Preview と同じ UI（Contrast / Invert / Show corners）を実装。角検出オーバーレイは undist 画像に対して行う。
+    - ページ2の Pre‑Detect Preview と同等の UI（Contrast / Invert / Show corners）。角検出は undist 画像に対して実行。
     - 選択中の ts は A/B のプレビュー間で同期される。
+    - undist マップは `2-calibrate-scenes/<runTs>/cam-<A|B>_remapXY.xy` のうち最新を自動適用（サイズ不一致時は raw を使用）。
   - 実行：
-    - ボタン押下で、表示中（undist）のA/Bフレームで角検出→ undist 領域で H を計算。
+    - ボタン押下で、表示中（undist）の A/B フレームに対して角検出 → undist 領域で `cvCalcHomography` を実行し、H(A→B) を算出。対向の H(B→A) は同ペアで再計算。
     - 保存先（画像・JSON）：`6-cameras-homography/<runTs>/`
       - `cam-<A>_undist.rgb`, `cam-<B>_undist.rgb`
       - `cam-<A>_to_cam-<B>_H_undist.json` と `cam-<B>_to_cam-<A>_H_undist.json`
-      - JSON には `{ homography3x3, metrics: { rmse, inliers, total, selectedTs } }` を含む
+        - FileEntry.type は "homography-json"
+        - JSON には `{ homography3x3:number[9], metrics:{ rmse:number, inliers:number, total:number, selectedTs:string }, pair:{ from, to } }` を含む
   - 備考：フレームは1ペアのみを使用。リストからの複数選択UIは設置しない。
 
   - プレビュー間の座標変換（クリック対応、2026-02-27 追加）：
