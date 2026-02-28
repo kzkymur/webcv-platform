@@ -144,10 +144,34 @@
 - これを安定させるため `app/shared/gl/remap.ts` の WebGL2 コンテキスト生成時に `preserveDrawingBuffer: true` を指定しました。これにより rAF の描画完了後もバッファ内容が保持され、UI ハンドラなど別タイミングでの `readPixels()` が黒（全0）になりません。
 - パフォーマンス影響が問題になる場合は、将来的に「最終出力もオフスクリーンFBOに描画→そこから `readPixels()`」へ切り替えると `preserveDrawingBuffer` を外せます。
 
-## Camera Y16 Pipeline（2026-02-25 追記）
+## Stream Abstraction（2026-02-27 追記）
 
-- 右サイドバー「Web Cameras」の各行にある `Y16` チェックで、該当カメラを 16bit グレースケール入力として扱います。
-- 実装: `useCameraStreams.ts` 内で `MediaStreamTrackProcessor` を用いて各フレームを読み取り、`format` が `Y16/GRAY16` の場合は 16bit → 8bit の疑似グレイへ線形正規化し `canvas.putImageData()` で描画、`canvas.captureStream()` を UI 側へ供給します。
-- フォールバック: `MediaStreamTrackProcessor` が存在しない環境ではパススルー（Y16 変換は行わない）。
-- ライフサイクル: 停止処理はソース `track.stop()` を優先し、リーダーのロック状態に応じて `reader.cancel()` または `readable.cancel()` を呼び分けます（どちらも失敗は握りつぶし）。これにより「ReadableStreamDefaultReader が release 済み」エラーを回避します。停止は冪等です。
-- 設定の保存場所: `cameraOptions: Record<string, { y16?: boolean }>`（名前空間付きローカルストレージ）
+- 抽象インタフェース: `VideoStreamSource`（`app/shared/stream/types.ts`）
+  - `toWebGL(): Promise<{ kind: "video"; element: HTMLVideoElement }>` — WebGL レンダラに渡せる入力（`HTMLVideoElement`）を返す。
+  - `toCanvas(target, { fitMax? })` — 指定キャンバスへ連続描画するコントローラを返す（内部 rAF）。
+  - `dispose()` — トラック・生成要素・変換処理を解放（冪等）。
+- 実装1（Web カメラ）: `WebcamSource`（`app/shared/stream/webcam.ts`）
+  - `getUserMedia` で `MediaStream` を取得し、`toWebGL()` で `video.srcObject` に設定済みの要素を返します。
+  - `toCanvas()` は 1:1 の描画ループを持ち、`fitMax` ピクセル以内に収まるよう DPR を考慮して自動スケールします。
+- 実装2（WebSocket Y16/GRAY16）: `WebSocketY16Source`（`app/shared/stream/wsY16.ts`）
+  - PT3F バイナリ（先頭4バイト `PT3F`、16bitヘッダ、w×h の `Uint16` 画素、`scale`）を受信し、内部キャンバスへ擬似カラー描画。
+  - `toWebGL()` は `canvas.captureStream()` を `HTMLVideoElement.srcObject` に設定して返す。
+  - `toCanvas()` は内部キャンバスからターゲットへ `drawImage()`。
+  - 既定の温度レンジは 290–310 K（必要に応じて将来調整）。
+- React フック: `useWebcamSource(deviceId)`（`app/shared/hooks/useWebcamSource.ts`）
+  - 廃止。代わりに `useVideoSource(deviceId)`（`app/shared/hooks/useVideoSource.ts`）。
+  - `deviceId` が `ws://`/`wss://` なら `WebSocketY16Source`、それ以外は `WebcamSource` を返します。
+- 使用箇所の置き換え（旧 `useCameraStream` → 新 API）
+  - Page1 `CameraPreview` は `source.toCanvas()` を利用。
+  - Page3 `RemapPreview`/Page4 `GalvoCalibrationPreview`/Page5 は `source.toWebGL()` が返す `video` を `RemapRenderer.setSourceVideo()` へ渡す。
+
+### WebSocket カメラ UI（Device Settings）
+
+- 右サイドバー Device Settings に「WebSocket Cameras」を追加。
+- 入力: `ws://...` または `wss://...`。`Add` で `wsCameras: string[]` に保存し、全ページのカメラ選択セレクトに `(WS) <url>` として出現。
+- 複数追加可能。各エントリに `Remove` ボタン。
+
+## Camera Y16 Pipeline（2026-02-27 更新）
+
+- 旧 `useCameraStream` および `WebcamSource` に実装されていた Y16/GRAY16 変換は削除しました。
+- 右サイドバーの `Y16` トグル UI は撤去しました（WebSocket Y16 ソースは `WebSocket Cameras` から追加して使用します）。

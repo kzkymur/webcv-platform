@@ -8,7 +8,9 @@ import { listFiles, getFile } from "@/shared/db";
 import type { FileEntry } from "@/shared/db/types";
 import { SerialCommunicator } from "@/shared/module/serialInterface";
 import { RemapRenderer } from "@/shared/gl/remap";
-import { useCameraIds, useCameraStream } from "@/shared/hooks/useCameraStreams";
+import { useCameraIds } from "@/shared/hooks/useCameraStreams";
+import { useVideoSource } from "@/shared/hooks/useVideoSource";
+import { listMergedVideoInputs } from "@/shared/util/devices";
 import { loadRemapXY, buildIdentityInterMap } from "@/shared/util/remap";
 import { invertHomography, applyHomography } from "@/shared/util/homography";
 import { crampGalvoCoordinate } from "@/shared/util/calcHomography";
@@ -33,7 +35,7 @@ export default function Page() {
   const [camIds] = useCameraIds();
   const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>([]);
   const [deviceId, setDeviceId] = useState<string>("");
-  const stream = useCameraStream(deviceId);
+  const source = useVideoSource(deviceId);
 
   // GL renderer (undist pass only here) + overlay
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -57,11 +59,9 @@ export default function Page() {
     let mounted = true;
     (async () => {
       try {
-        const list = await navigator.mediaDevices?.enumerateDevices();
-        const vids = (list || []).filter((d) => d.kind === "videoinput");
-        const vmin = vids.map((d) => ({ deviceId: d.deviceId, label: d.label || d.deviceId }));
+        const vids = await listMergedVideoInputs();
         if (!mounted) return;
-        setDevices(vmin);
+        setDevices(vids.map((d) => ({ deviceId: d.deviceId, label: d.label || d.deviceId })));
         const first = camIds.find((id) => !!id) || "";
         setDeviceId((prev) => (prev ? prev : first));
       } catch {}
@@ -71,13 +71,22 @@ export default function Page() {
     };
   }, [camIds]);
 
-  // Wire stream to hidden <video>
+  // Acquire a video element and pass to renderer
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.srcObject = stream || null;
-    if (stream) v.play().catch(() => {});
-  }, [stream]);
+    let cancelled = false;
+    (async () => {
+      if (!source) {
+        const r = rendererRef.current; if (r) r.setSourceVideo(null);
+        videoRef.current = null; return;
+      }
+      const webgl = await source.toWebGL();
+      if (cancelled) return;
+      const v = webgl?.element || null;
+      videoRef.current = v;
+      const r = rendererRef.current; if (r) r.setSourceVideo(v);
+    })();
+    return () => { cancelled = true; };
+  }, [source]);
 
   // Init renderer on mount
   useEffect(() => {
@@ -93,12 +102,12 @@ export default function Page() {
     };
   }, []);
 
-  // Push video to renderer
+  // Ensure renderer sees the latest video element
   useEffect(() => {
     const r = rendererRef.current;
     if (!r) return;
     r.setSourceVideo(videoRef.current || null);
-  }, [rendererRef.current, stream]);
+  }, [rendererRef.current]);
 
   // Load undist map and set identity inter map on selection
   useEffect(() => {
@@ -139,7 +148,7 @@ export default function Page() {
     if (v.readyState >= 2) applyIdentity();
     else v.addEventListener("loadedmetadata", applyIdentity, { once: true });
     return () => { cancelled = true; };
-  }, [selected?.mapXYPath, stream]);
+  }, [selected?.mapXYPath, source]);
 
   // Auto-select latest undistortion map by camera (device label sanitized)
   useEffect(() => {
@@ -416,7 +425,7 @@ export default function Page() {
                 ⚠︎ No undistortion map found for this camera — showing raw feed.
               </div>
             )}
-            <video ref={videoRef} style={{ display: "none" }} />
+            {/* Video element is obtained from the source and held off-DOM */}
           </section>
         </div>
       </main>

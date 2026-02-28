@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useCameraStream } from "@/shared/hooks/useCameraStreams";
-import { fitWithinBox } from "@/shared/util/fit";
+import { useVideoSource } from "@/shared/hooks/useVideoSource";
 
 export type CaptureFormat = "rgba8" | "gray8"; // gray16 can be added when available
 
@@ -26,9 +25,8 @@ export default function CameraPreview({
   onChangeFormat: (f: CaptureFormat) => void;
   onReady: (h: CameraPreviewHandle | null) => void;
 }) {
-  const stream = useCameraStream(deviceId);
+  const source = useVideoSource(deviceId);
   const [label, setLabel] = useState<string>("");
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -37,10 +35,12 @@ export default function CameraPreview({
     let mounted = true;
     (async () => {
       try {
+        if (deviceId?.startsWith("ws://") || deviceId?.startsWith("wss://")) {
+          if (mounted) setLabel(`(WS) ${deviceId}`);
+          return;
+        }
         const list = await navigator.mediaDevices?.enumerateDevices();
-        const dev = (list || []).find(
-          (d) => d.kind === "videoinput" && d.deviceId === deviceId
-        );
+        const dev = (list || []).find((d) => d.kind === "videoinput" && d.deviceId === deviceId);
         if (mounted) setLabel(dev?.label || "");
       } catch {}
     })();
@@ -49,51 +49,24 @@ export default function CameraPreview({
     };
   }, [deviceId]);
 
-  // Wire stream to hidden <video>
+  // Draw preview to visible canvas via stream abstraction
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.srcObject = stream || null;
-    if (stream) v.play().catch(() => {});
-  }, [stream]);
-
-  // Draw preview to visible canvas: fit within 640x640 box (no crop)
-  useEffect(() => {
-    let raf = 0;
-    const v = videoRef.current;
     const c = canvasRef.current;
-    const ctx = c?.getContext("2d");
-    if (!v || !ctx || !c) return;
-    const MAX = 640;
-    const loop = () => {
-      if (v.readyState >= 2) {
-        const vw = v.videoWidth || MAX;
-        const vh = v.videoHeight || 1;
-        // CSS sizing handled globally; only adjust backing store to CSS size * DPR
-        const { w: cssW, h: cssH } = fitWithinBox(vw || MAX, vh || 1, MAX);
-        const dpr = window.devicePixelRatio || 1;
-        const bufW = Math.max(1, Math.round(cssW * dpr));
-        const bufH = Math.max(1, Math.round(cssH * dpr));
-        if (c.width !== bufW || c.height !== bufH) {
-          c.width = bufW;
-          c.height = bufH;
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-          ctx.scale(dpr, dpr);
-        }
-        ctx.clearRect(0, 0, cssW, cssH);
-        ctx.drawImage(v, 0, 0, cssW, cssH);
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [stream]);
+    if (!source || !c) return;
+    let ctl: { stop: () => void; dispose: () => void } | null = null;
+    (async () => {
+      ctl = await source.toCanvas(c, { fitMax: 640 });
+    })();
+    return () => { try { ctl?.stop(); ctl?.dispose(); } catch {} };
+  }, [source]);
 
   // Expose capture handle
   useEffect(() => {
     const handle: CameraPreviewHandle = {
       capture: async (fmt) => {
-        const v = videoRef.current;
+        if (!source) return null;
+        const webgl = await source.toWebGL();
+        const v = webgl?.element || null;
         if (!v || v.readyState < 2) return null;
         // Use native frame size
         const w = v.videoWidth;
@@ -128,7 +101,7 @@ export default function CameraPreview({
     };
     onReady(handle);
     return () => onReady(null);
-  }, [stream, label, onReady]);
+  }, [source, label, onReady]);
 
   return (
     <div className="col" style={{ gap: 6 }}>
@@ -152,7 +125,6 @@ export default function CameraPreview({
         </label>
       </div>
       <div className="canvasWrap">
-        <video ref={videoRef} style={{ display: "none" }} />
         <canvas ref={canvasRef} />
       </div>
     </div>

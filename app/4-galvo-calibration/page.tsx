@@ -8,6 +8,7 @@ import { listFiles, putFile } from "@/shared/db";
 import type { FileEntry } from "@/shared/db/types";
 import { SerialCommunicator } from "@/shared/module/serialInterface";
 import { useCameraIds } from "@/shared/hooks/useCameraStreams";
+import { listMergedVideoInputs } from "@/shared/util/devices";
 import { formatTimestamp } from "@/shared/util/time";
 import { WasmWorkerClient } from "@/shared/wasm/client";
 import HeaderBar from "@/shared/components/GalvoCalibrationHeaderBar";
@@ -75,11 +76,9 @@ export default function Page() {
     let mounted = true;
     (async () => {
       try {
-        const list = await navigator.mediaDevices?.enumerateDevices();
-        const vids = (list || []).filter((d) => d.kind === "videoinput");
-        const vmin = vids.map((d) => ({ deviceId: d.deviceId, label: d.label || d.deviceId }));
+        const vids = await listMergedVideoInputs();
         if (!mounted) return;
-        setDevices(vmin);
+        setDevices(vids.map((d) => ({ deviceId: d.deviceId, label: d.label || d.deviceId })));
         const first = camIds.find((id) => !!id) || "";
         setDeviceId((prev) => (prev ? prev : first));
       } catch {}

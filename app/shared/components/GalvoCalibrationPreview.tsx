@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { RemapRenderer } from "@/shared/gl/remap";
-import { useCameraStream } from "@/shared/hooks/useCameraStreams";
+import { useVideoSource } from "@/shared/hooks/useVideoSource";
 import { formatTimestamp } from "@/shared/util/time";
 import { loadRemapXY, buildIdentityInterMap } from "@/shared/util/remap";
 import { putFile } from "@/shared/db";
@@ -31,7 +31,7 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
   { deviceId, selected, grid, showOverlay, setShowOverlay, spots, last, onClearOverlay, onFps },
   ref
 ) {
-  const stream = useCameraStream(deviceId);
+  const source = useVideoSource(deviceId);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -43,13 +43,22 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
     propsRef.current = { grid, showOverlay, spots, last };
   }, [grid, showOverlay, spots, last]);
 
-  // Wire stream to hidden <video>
+  // Acquire a video element and pass to renderer
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.srcObject = stream || null;
-    if (stream) v.play().catch(() => {});
-  }, [stream]);
+    let cancelled = false;
+    (async () => {
+      if (!source) {
+        const r = rendererRef.current; if (r) r.setSourceVideo(null);
+        videoRef.current = null; return;
+      }
+      const webgl = await source.toWebGL();
+      if (cancelled) return;
+      const v = webgl?.element || null;
+      videoRef.current = v;
+      const r = rendererRef.current; if (r) r.setSourceVideo(v);
+    })();
+    return () => { cancelled = true; };
+  }, [source]);
 
   // Init renderer on mount
   useEffect(() => {
@@ -65,12 +74,12 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
     };
   }, []);
 
-  // Push video to renderer
+  // Ensure renderer sees the latest video element
   useEffect(() => {
     const r = rendererRef.current;
     if (!r) return;
     r.setSourceVideo(videoRef.current || null);
-  }, [rendererRef.current, stream]);
+  }, [rendererRef.current]);
 
   // Load undist map and set identity inter map on selection
   useEffect(() => {
@@ -110,7 +119,7 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
     return () => {
       cancelled = true;
     };
-  }, [selected?.mapXYPath, stream]);
+  }, [selected?.mapXYPath, source]);
 
   // Clear overlay when toggled off
   useEffect(() => {
@@ -262,7 +271,7 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
           ⚠︎ No undistortion map found for this camera — showing raw feed.
         </div>
       )}
-      <video ref={videoRef} style={{ display: "none" }} />
+      {/* Video element is obtained from the source and held off-DOM */}
     </section>
   );
 });

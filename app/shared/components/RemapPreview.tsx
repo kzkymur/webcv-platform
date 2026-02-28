@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RemapRenderer } from "@/shared/gl/remap";
 import { getFile } from "@/shared/db";
-import { useCameraIds, useCameraStream } from "@/shared/hooks/useCameraStreams";
+import { useCameraIds } from "@/shared/hooks/useCameraStreams";
+import { useVideoSource } from "@/shared/hooks/useVideoSource";
+import { listMergedVideoInputs } from "@/shared/util/devices";
 import { formatTimestamp } from "@/shared/util/time";
 import { sanitize } from "@/shared/util/strings";
 import { putFile } from "@/shared/db";
@@ -70,7 +72,7 @@ export default function RemapPreview({
   );
   // Source device: prefer first selected; user can change
   const [deviceId, setDeviceId] = useState<string>("");
-  const stream = useCameraStream(deviceId);
+  const source = useVideoSource(deviceId);
 
   // GL bits
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -84,15 +86,9 @@ export default function RemapPreview({
     let mounted = true;
     (async () => {
       try {
-        const list = await navigator.mediaDevices?.enumerateDevices();
-        const vids = (list || []).filter((d) => d.kind === "videoinput");
-        const vmin = vids.map((d) => ({
-          deviceId: d.deviceId,
-          label: d.label || d.deviceId,
-        }));
+        const vids = await listMergedVideoInputs();
         if (!mounted) return;
-        setDevices(vmin);
-        // Default device: use first selected id if present
+        setDevices(vids.map((d) => ({ deviceId: d.deviceId, label: d.label || d.deviceId })));
         const first = camIds.find((id) => !!id) || "";
         setDeviceId((prev) => (prev ? prev : first));
       } catch {}
@@ -102,13 +98,23 @@ export default function RemapPreview({
     };
   }, [camIds]);
 
-  // Wire stream to hidden <video>
+  // Acquire a video element for WebGL and provide it to renderer
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.srcObject = stream || null;
-    if (stream) v.play().catch(() => {});
-  }, [stream]);
+    let cancelled = false;
+    (async () => {
+      if (!source) {
+        videoRef.current = null;
+        const r = rendererRef.current; if (r) r.setSourceVideo(null);
+        return;
+      }
+      const webgl = await source.toWebGL();
+      if (cancelled) return;
+      const v = webgl?.element || null;
+      videoRef.current = v;
+      const r = rendererRef.current; if (r) r.setSourceVideo(v);
+    })();
+    return () => { cancelled = true; };
+  }, [source]);
 
   // Initialize renderer on mount
   useEffect(() => {
@@ -124,12 +130,12 @@ export default function RemapPreview({
     };
   }, []);
 
-  // Push video element to renderer
+  // Ensure renderer sees the latest video element (no-op if unchanged)
   useEffect(() => {
     const r = rendererRef.current;
     if (!r) return;
     r.setSourceVideo(videoRef.current);
-  }, [rendererRef.current, stream]);
+  }, [rendererRef.current]);
 
   // Load mapping + undist maps upon selection
   useEffect(() => {
@@ -252,7 +258,7 @@ export default function RemapPreview({
       <div className="canvasWrap">
         <canvas ref={canvasRef} />
       </div>
-      <video ref={videoRef} style={{ display: "none" }} />
+      {/* Video element is obtained from the source and passed directly to the renderer. */}
       <div style={{ fontSize: 12, opacity: 0.75 }}>
         {sel?.kind === "inter" ? (
           <>

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { getCurrentNamespace, updateNamespacedStore, readNamespacedStore } from "@/shared/module/loaclStorage";
+import { listMergedVideoInputs } from "@/shared/util/devices";
 import { SerialCommunicator } from "@/shared/module/serialInterface";
 
 type MediaDeviceInfoLite = Pick<MediaDeviceInfo, "deviceId" | "label" | "kind">;
@@ -19,19 +20,11 @@ function DeviceSettingsInner() {
   const [serial, setSerial] = useState<SerialCommunicator | null>(null);
   const [laserPct, setLaserPct] = useState(0);
   const [armed, setArmed] = useState(false);
-  const [cameraOpts, setCameraOpts] = useState<Record<string, { y16?: boolean }>>(() => {
-    const st = readNamespacedStore<{ cameraOptions?: Record<string, { y16?: boolean }> }>();
-    return st.cameraOptions || {};
-  });
   const didInit = useRef(false);
 
   // Helper to (re)enumerate cameras
   async function refreshDevices() {
-    try {
-      const list = await navigator.mediaDevices?.enumerateDevices();
-      const vids = (list || []).filter((d) => d.kind === "videoinput");
-      setDevices(vids);
-    } catch {}
+    try { setDevices(await listMergedVideoInputs()); } catch {}
   }
 
   // Single consolidated effect for init + persistence
@@ -45,8 +38,7 @@ function DeviceSettingsInner() {
     }
     const ns = getCurrentNamespace();
     updateNamespacedStore({ cameraIds }, ns);
-    updateNamespacedStore({ cameraOptions: cameraOpts }, ns);
-  }, [cameraIds, cameraOpts]);
+  }, [cameraIds]);
 
   // Compute feature support only after mount so SSR markup matches
   const serialSupported = typeof navigator !== "undefined" && !!(navigator as any).serial;
@@ -62,6 +54,13 @@ function DeviceSettingsInner() {
     }
     await refreshDevices();
   }
+
+  // WebSocket camera management
+  const [wsInput, setWsInput] = useState("");
+  const wsCams: string[] = ((): string[] => {
+    const st = readNamespacedStore<{ wsCameras?: string[] }>();
+    return Array.isArray(st.wsCameras) ? st.wsCameras : [];
+  })();
 
   return (
     <div className="col">
@@ -86,22 +85,7 @@ function DeviceSettingsInner() {
                 </option>
               ))}
             </select>
-            <label className="row" style={{ gap: 6 }}>
-              <input
-                type="checkbox"
-                disabled={!id}
-                checked={!!(id && cameraOpts[id]?.y16)}
-                onChange={(e) => {
-                  const did = id;
-                  if (!did) return;
-                  setCameraOpts((prev) => ({
-                    ...prev,
-                    [did]: { ...(prev[did] || {}), y16: e.target.checked },
-                  }));
-                }}
-              />
-              Y16
-            </label>
+            {/* Y16 toggle removed */}
             <button onClick={() => setCameraIds(cameraIds.filter((_, i) => i !== idx))}>Remove</button>
           </div>
         ))}
@@ -114,6 +98,50 @@ function DeviceSettingsInner() {
             </>
           )}
         </div>
+      </div>
+
+      {/* WebSocket cameras */}
+      <div className="col" style={{ marginTop: 12 }}>
+        <label>WebSocket Cameras</label>
+        <div className="row" style={{ gap: 8 }}>
+          <input
+            type="text"
+            placeholder="ws://host:port/path"
+            value={wsInput}
+            onChange={(e) => setWsInput(e.target.value)}
+            style={{ flex: 1 }}
+          />
+          <button
+            onClick={() => {
+              const url = wsInput.trim();
+              if (!url || (!url.startsWith("ws://") && !url.startsWith("wss://"))) return;
+              const next = Array.from(new Set([...(wsCams || []), url]));
+              updateNamespacedStore({ wsCameras: next });
+              setWsInput("");
+              refreshDevices();
+            }}
+          >
+            Add
+          </button>
+        </div>
+        {(wsCams || []).length > 0 && (
+          <div className="col" style={{ gap: 6, marginTop: 6 }}>
+            {(wsCams || []).map((u) => (
+              <div key={u} className="row" style={{ gap: 8, alignItems: "center" }}>
+                <code style={{ flex: 1 }}>{u}</code>
+                <button
+                  onClick={() => {
+                    const next = (wsCams || []).filter((x) => x !== u);
+                    updateNamespacedStore({ wsCameras: next });
+                    refreshDevices();
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="col" style={{ marginTop: 8 }}>
