@@ -24,8 +24,15 @@
 - 実態は一つのテーブルです。カラムは以下
   - パス付きファイル名
   - ファイルタイプ：RGB 画像 / Grayscale 画像 / Optical Flow / Remap など
-  - データ：JavaScript の型付き配列がよく入ります。
+  - データ：JavaScript の型付き配列がよく入ります（一覧取得では省略され、実データは `getFile(path)` で取得）。
 - VSCode のようなトグル付きのファイルシステム UI は左サイドバーに常設します。
+
+### I/O パフォーマンス最適化（2026-02-28 追記）
+
+- `listFiles()` はメタデータ（path/type/width/height/channels）のみを返します。BLOB を含みません。
+- 実データが必要な場合は `getFile(path)` を呼んでください。
+- 連続保存のオーバーヘッド削減のため、保存はデバウンスされ OPFS への書き出しは 250ms にまとめて行われます（ページ遷移/非表示時には即時フラッシュ）。
+- まとめて保存する場合は `putMany([entries...])` を使用すると 1 トランザクション＋1 回の OPFS 書き出しで高速です（フォールバックで逐次保存も可）。
 
 ## 3. サイドバーのリサイズとユーザープリファレンス（2026-02-25 追記）
 
@@ -164,6 +171,11 @@
 - 使用箇所の置き換え（旧 `useCameraStream` → 新 API）
   - Page1 `CameraPreview` は `source.toCanvas()` を利用。
   - Page3 `RemapPreview`/Page4 `GalvoCalibrationPreview`/Page5 は `source.toWebGL()` が返す `video` を `RemapRenderer.setSourceVideo()` へ渡す。
+
+## Figure Management（Page 7、2026-02-28 追記）
+
+- Homography は一覧での自動選択時にも自動ロードされ、プレビューに適用されます（手動クリック不要）。
+- `Create Start` は Homography ロード後に有効化されます。`Load` で読み込んだ図形は Homography がある場合にプレビューへ即時描画されます。
 
 ### WebSocket カメラ UI（Device Settings）
 

@@ -3,7 +3,7 @@ import type { FileEntry, FileType } from "@/shared/db/types";
 export function fileToRGBA(file: FileEntry): { rgba: Uint8ClampedArray; width: number; height: number } {
   const w = file.width ?? 0;
   const h = file.height ?? 0;
-  const u8 = new Uint8ClampedArray(file.data);
+  const u8 = new Uint8ClampedArray(file.data || new ArrayBuffer(0));
   if (file.type === "grayscale-image") {
     if (file.channels === 4) return { rgba: u8, width: w, height: h };
     const out = new Uint8ClampedArray(w * h * 4);

@@ -293,7 +293,7 @@ export default function Page() {
       let label = p;
       try {
         const fe = await getFile(p);
-        if (fe) {
+        if (fe?.data) {
           const txt = new TextDecoder().decode(fe.data);
           const js = JSON.parse(txt || "{}");
           const mts = js?.metrics || {};
@@ -316,7 +316,7 @@ export default function Page() {
   async function loadHomographyFromPath(path: string, a: string, b: string) {
     try {
       const fe = await getFile(path);
-      if (!fe) return;
+      if (!fe?.data) return;
       const js = JSON.parse(new TextDecoder().decode(fe.data) || "{}");
       const H = (js?.homography3x3 || js?.H || []) as number[];
       if (!H || H.length !== 9) return;
@@ -325,7 +325,7 @@ export default function Page() {
       const revPath = `${folder}/cam-${sanitize(b)}_to_cam-${sanitize(a)}_H_undist.json`;
       let Hrev: number[] | null = null;
       const rev = await getFile(revPath);
-      if (rev) {
+      if (rev?.data) {
         try {
           const jsr = JSON.parse(new TextDecoder().decode(rev.data) || "{}");
           const Hr = jsr?.homography3x3 || jsr?.H;

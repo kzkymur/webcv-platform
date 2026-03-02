@@ -225,6 +225,7 @@ export default function Page() {
         return;
       }
       try {
+        if (!fe.data) throw new Error("missing data");
         const json = JSON.parse(new TextDecoder().decode(new Uint8Array(fe.data)));
         // Accept both { H: number[9] } and { homography3x3: number[9] }
         const arr: number[] | undefined = Array.isArray(json?.H)

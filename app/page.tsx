@@ -132,7 +132,7 @@ export default function Page() {
 
 function FilePreview({ file }: { file: FileEntry }) {
   const { imgData, jsonText, jsonObj } = useMemo(() => {
-    if (!file) return { imgData: null, jsonText: null, jsonObj: null };
+    if (!file || !file.data) return { imgData: null, jsonText: null, jsonObj: null };
 
     const isJson = file.path.toLowerCase().endsWith(".json");
     if (isJson) {

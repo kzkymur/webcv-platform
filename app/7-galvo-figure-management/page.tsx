@@ -208,6 +208,28 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-load homography when selection changes (including initial auto-select)
+  useEffect(() => {
+    (async () => {
+      const path = hSel;
+      const ctrl = ctrlRef.current;
+      if (!path) { setHMat(null); ctrl?.setHomography(null); return; }
+      try {
+        const fe = await getFile(path);
+        if (!fe || !fe.data) { setHMat(null); ctrl?.setHomography(null); return; }
+        const json = JSON.parse(new TextDecoder().decode(new Uint8Array(fe.data)));
+        const arr: number[] | undefined = Array.isArray(json?.H) ? json.H : (Array.isArray(json?.homography3x3) ? json.homography3x3 : undefined);
+        if (arr && arr.length === 9) {
+          const hmat = new Float32Array(arr);
+          setHMat(hmat);
+          ctrl?.setHomography(hmat);
+        } else { setHMat(null); ctrl?.setHomography(null); }
+      } catch {
+        setHMat(null); ctrl?.setHomography(null);
+      }
+    })();
+  }, [hSel]);
+
   async function handleDeviceChange(id: string) {
     setDeviceId(id);
     const label = devices.find((d) => d.deviceId === id)?.label || id;
@@ -253,7 +275,7 @@ export default function Page() {
 
   async function loadFigure(path: string) {
     const fe = await getFile(path);
-    if (!fe) return;
+    if (!fe || !fe.data) return;
     try {
       const json = JSON.parse(new TextDecoder().decode(new Uint8Array(fe.data)));
       const arr: number[] | undefined = Array.isArray(json?.pointsGalvo) ? json.pointsGalvo : undefined;
@@ -331,7 +353,7 @@ export default function Page() {
                   onClick={async () => {
                     setHSel(h.path);
                     const fe = await getFile(h.path);
-                    if (!fe) { setHMat(null); ctrlRef.current?.setHomography(null); return; }
+                    if (!fe || !fe.data) { setHMat(null); ctrlRef.current?.setHomography(null); return; }
                     try {
                       const json = JSON.parse(new TextDecoder().decode(new Uint8Array(fe.data)));
                       const arr: number[] | undefined = Array.isArray(json?.H) ? json.H : (Array.isArray(json?.homography3x3) ? json.homography3x3 : undefined);
@@ -405,4 +427,3 @@ export default function Page() {
     </>
   );
 }
-
