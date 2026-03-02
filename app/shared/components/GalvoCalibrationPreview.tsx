@@ -44,21 +44,43 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
   }, [grid, showOverlay, spots, last]);
 
   // Acquire a video element and pass to renderer
+  // Also apply identity remap when no undist map is selected to avoid a blank canvas.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!source) {
-        const r = rendererRef.current; if (r) r.setSourceVideo(null);
-        videoRef.current = null; return;
+        const r = rendererRef.current;
+        if (r) r.setSourceVideo(null);
+        videoRef.current = null;
+        return;
       }
       const webgl = await source.toWebGL();
       if (cancelled) return;
       const v = webgl?.element || null;
       videoRef.current = v;
-      const r = rendererRef.current; if (r) r.setSourceVideo(v);
+      const r = rendererRef.current;
+      if (r) r.setSourceVideo(v);
+
+      // Fallback: if no undistortion map is selected, initialize identity maps
+      // using the actual video dimensions once metadata is available.
+      if (v && r && !selected) {
+        const applyIdentity = () => {
+          if (cancelled) return;
+          const w = v.videoWidth || 0;
+          const h = v.videoHeight || 0;
+          if (!w || !h) return;
+          const id = buildIdentityInterMap(w, h);
+          r.setUndistMapXY(id, { width: w, height: h });
+          r.setInterMapXY(id, { width: w, height: h });
+        };
+        if (v.readyState >= 2) applyIdentity();
+        else v.addEventListener("loadedmetadata", applyIdentity, { once: true });
+      }
     })();
-    return () => { cancelled = true; };
-  }, [source]);
+    return () => {
+      cancelled = true;
+    };
+  }, [source, selected?.mapXYPath]);
 
   // Init renderer on mount
   useEffect(() => {

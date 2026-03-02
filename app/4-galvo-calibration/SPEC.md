@@ -2,6 +2,7 @@
   - TypeScript + C++ WASM（OpenCV）+ Web Serial API。
   - パス：/4-galvo-calibration
   - プレビューはページ3同様の 2 パス構成（undist → identity inter）。右上ヘッダーで Source Camera を選択し、マイコンに接続します。
+  - undist マップが見つからない場合でも、ビデオのメタデータ読込後に identity マップを自動適用して raw 表示が常に出るようにする（空白キャンバスにならない）。
 
  - 入力（undist の自動選択）：
    - 選択中カメラのラベルを sanitize した `<cam>` に対して、`2-calibrate-scenes/<runTs>/cam-<cam>_remapXY.xy` のうち最新を自動選択して適用（見つからない場合は raw 表示）。

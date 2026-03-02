@@ -12,8 +12,8 @@ export type FileType =
 export type FileEntry = {
   path: string; // e.g. folder/sub/img1
   type: FileType;
-  // For listings, `data` may be omitted for performance; callers that need
-  // payloads should fetch via `getFile(path)`.
+  // Payloadは OPFS(Origin Private File System) の個別ファイルに保存されます。
+  // 一覧取得では `data` を返しません。必要な場合は `getFile(path)` を呼んでください。
   data?: ArrayBuffer; // binary payload
   width?: number;
   height?: number;

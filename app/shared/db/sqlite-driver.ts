@@ -1,5 +1,6 @@
 import initSqlJs, { Database, SqlJsStatic } from "sql.js";
 import type { FileEntry } from "./types";
+import { deleteBlobFromOPFS, readBlobFromOPFS, writeBlobToOPFS } from "@/shared/db/opfs-blob";
 
 let SQLP: Promise<SqlJsStatic> | null = null;
 let db: Database | null = null;
@@ -78,15 +79,8 @@ async function ensureDB(): Promise<Database> {
   const SQL = await SQLP;
   const file = await loadFromOPFS();
   db = file ? new SQL.Database(file) : new SQL.Database();
-  // schema
-  db.run(`CREATE TABLE IF NOT EXISTS files (
-    path TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    data BLOB NOT NULL,
-    width INTEGER,
-    height INTEGER,
-    channels INTEGER
-  );`);
+  // Ensure schema v2 (no BLOB column). If a legacy schema is detected, drop table and recreate.
+  await ensureSchemaV2(db);
   return db;
 }
 
@@ -133,11 +127,13 @@ if (typeof window !== "undefined") {
 
 export async function putFile(entry: FileEntry): Promise<void> {
   const d = await ensureDB();
-  const stmt = d.prepare(`INSERT INTO files(path, type, data, width, height, channels)
-                          VALUES (?, ?, ?, ?, ?, ?)
+  // Write blob first if provided
+  if (entry.data) await writeBlobToOPFS(entry.path, new Uint8Array(entry.data));
+  // Upsert metadata
+  const stmt = d.prepare(`INSERT INTO files(path, type, width, height, channels)
+                          VALUES (?, ?, ?, ?, ?)
                           ON CONFLICT(path) DO UPDATE SET
                             type=excluded.type,
-                            data=excluded.data,
                             width=excluded.width,
                             height=excluded.height,
                             channels=excluded.channels`);
@@ -145,7 +141,6 @@ export async function putFile(entry: FileEntry): Promise<void> {
     stmt.run([
       entry.path,
       entry.type,
-      new Uint8Array(entry.data),
       entry.width ?? null,
       entry.height ?? null,
       entry.channels ?? null,
@@ -161,13 +156,17 @@ export async function putFile(entry: FileEntry): Promise<void> {
 export async function putMany(entries: FileEntry[]): Promise<void> {
   if (!entries.length) return;
   const d = await ensureDB();
+  // 1) Write all blobs to OPFS first (metadata-only updates allowed if data omitted)
+  for (const e of entries) {
+    if (e.data) await writeBlobToOPFS(e.path, new Uint8Array(e.data));
+  }
+  // 2) Upsert metadata in a single transaction
   d.run("BEGIN TRANSACTION");
   try {
-    const stmt = d.prepare(`INSERT INTO files(path, type, data, width, height, channels)
-                            VALUES (?, ?, ?, ?, ?, ?)
+    const stmt = d.prepare(`INSERT INTO files(path, type, width, height, channels)
+                            VALUES (?, ?, ?, ?, ?)
                             ON CONFLICT(path) DO UPDATE SET
                               type=excluded.type,
-                              data=excluded.data,
                               width=excluded.width,
                               height=excluded.height,
                               channels=excluded.channels`);
@@ -176,7 +175,6 @@ export async function putMany(entries: FileEntry[]): Promise<void> {
         stmt.run([
           e.path,
           e.type,
-          new Uint8Array(e.data),
           e.width ?? null,
           e.height ?? null,
           e.channels ?? null,
@@ -217,6 +215,10 @@ export async function deleteMany(paths: string[]): Promise<number> {
     try { d.run("ROLLBACK"); } catch {}
     throw e;
   }
+  // Best-effort: remove blobs too
+  for (const p of paths) {
+    await deleteBlobFromOPFS(p);
+  }
   notify("batch", paths);
   schedulePersist();
   return affected;
@@ -224,17 +226,16 @@ export async function deleteMany(paths: string[]): Promise<number> {
 
 export async function getFile(path: string): Promise<FileEntry | undefined> {
   const d = await ensureDB();
-  const stmt = d.prepare(`SELECT path, type, data, width, height, channels FROM files WHERE path = ?`);
+  const stmt = d.prepare(`SELECT path, type, width, height, channels FROM files WHERE path = ?`);
   try {
     stmt.bind([path]);
     if (stmt.step()) {
       const row = stmt.getAsObject();
-      const data = row["data"] as Uint8Array;
+      const buf = await readBlobFromOPFS(path);
       return {
         path: row["path"] as string,
         type: row["type"] as any,
-        // Convert to standalone ArrayBuffer to avoid holding onto WASM memory
-        data: data.buffer.slice((data as any).byteOffset || 0, ((data as any).byteOffset || 0) + ((data as any).byteLength || data.length)),
+        data: buf || undefined,
         width: (row["width"] as number) ?? undefined,
         height: (row["height"] as number) ?? undefined,
         channels: (row["channels"] as number) ?? undefined,
@@ -254,13 +255,15 @@ export async function deleteFile(path: string): Promise<void> {
   } finally {
     stmt.free();
   }
+  // Best-effort blob delete
+  await deleteBlobFromOPFS(path);
   notify("delete", [path]);
   schedulePersist();
 }
 
 export async function listFiles(): Promise<FileEntry[]> {
   const d = await ensureDB();
-  // metadata-only listing (avoid pulling BLOBs for performance)
+  // metadata-only listing (no BLOBs in schema v2)
   const stmt = d.prepare(`SELECT path, type, width, height, channels FROM files ORDER BY path`);
   const out: FileEntry[] = [];
   try {
@@ -285,4 +288,37 @@ export async function listFiles(): Promise<FileEntry[]> {
 export async function flush(): Promise<void> {
   if (persistTimer !== null) { clearTimeout(persistTimer); persistTimer = null; }
   await persistNow();
+}
+
+// Ensure v2 schema; drop legacy table if found (no data migration)
+async function ensureSchemaV2(d: Database): Promise<void> {
+  try {
+    // Check existing columns
+    const stmt = d.prepare(`PRAGMA table_info(files)`);
+    const cols: string[] = [];
+    try {
+      while (stmt.step()) {
+        const row = stmt.getAsObject();
+        cols.push((row["name"] as string) || "");
+      }
+    } finally {
+      stmt.free();
+    }
+    if (cols.length > 0 && cols.includes("data")) {
+      // Legacy schema: drop table (metadata only will be rebuilt by app logic)
+      d.run(`DROP TABLE files`);
+      try { d.run("VACUUM"); } catch {}
+      try { await persistNow(); } catch {}
+    }
+  } catch {
+    // ignore: table may not exist
+  }
+  // Create v2 table if missing
+  d.run(`CREATE TABLE IF NOT EXISTS files (
+    path TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    channels INTEGER
+  );`);
 }
