@@ -71,22 +71,41 @@ export default function Page() {
     };
   }, [camIds]);
 
-  // Acquire a video element and pass to renderer
+  // Acquire a video element and pass to renderer.
+  // If no undist map is selected, apply identity maps after metadata loads so the preview never stays blank.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!source) {
-        const r = rendererRef.current; if (r) r.setSourceVideo(null);
-        videoRef.current = null; return;
+        const r = rendererRef.current;
+        if (r) r.setSourceVideo(null);
+        videoRef.current = null;
+        return;
       }
       const webgl = await source.toWebGL();
       if (cancelled) return;
       const v = webgl?.element || null;
       videoRef.current = v;
-      const r = rendererRef.current; if (r) r.setSourceVideo(v);
+      const r = rendererRef.current;
+      if (r) r.setSourceVideo(v);
+
+      if (v && r && !selected) {
+        const applyIdentity = () => {
+          if (cancelled) return;
+          const w = v.videoWidth || 0;
+          const h = v.videoHeight || 0;
+          if (!w || !h) return;
+          const id = buildIdentityInterMap(w, h);
+          r.setUndistMapXY(id, { width: w, height: h });
+          r.setInterMapXY(id, { width: w, height: h });
+          drawOverlay();
+        };
+        if (v.readyState >= 2) applyIdentity();
+        else v.addEventListener("loadedmetadata", applyIdentity, { once: true });
+      }
     })();
     return () => { cancelled = true; };
-  }, [source]);
+  }, [source, selected?.mapXYPath]);
 
   // Init renderer on mount
   useEffect(() => {

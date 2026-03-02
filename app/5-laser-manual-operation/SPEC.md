@@ -6,7 +6,8 @@
    - ホモグラフィ：`4-galvo-calibration/<ts>-homography.json` を一覧から単一選択（`homography-json`）。
      - JSON は `{ H:number[9] }` または `{ homography3x3:number[9] }` のいずれも受理。
      - 読み込み後に逆行列 `Hinv` を内部計算（camera→galvo）。
-   - undist マップ：選択中カメラのラベルに一致する最新の `2-calibrate-scenes/<runTs>/cam-<cam>_remapXY.xy` を自動適用（見つからない場合は raw 表示）。
+  - undist マップ：選択中カメラのラベルに一致する最新の `2-calibrate-scenes/<runTs>/cam-<cam>_remapXY.xy` を自動適用（見つからない場合は raw 表示）。
+    - undist マップが未検出でも、ビデオのメタデータ読込後に identity マップを自動適用し、常にプレビューが表示される（空白キャンバス回避）。
 
  - UI（実装準拠）：
    - ヘッダー：Source Camera セレクト、Microcontroller 接続／切断。
