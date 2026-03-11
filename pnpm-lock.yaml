@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
+  '@kzkymur/sequencer':
+    specifier: ^1.0.4
+    version: 1.0.4
   next:
     specifier: ^14.2.0
     version: 14.2.35(react-dom@18.3.1)(react@18.3.1)
@@ -36,6 +39,10 @@ devDependencies:
     version: 5.9.3
 
 packages:
+
+  /@kzkymur/sequencer@1.0.4:
+    resolution: {integrity: sha512-TtEX7yZ6oU58WMSvUzwBl/JyTpWDziZZlYVtPj+fN+XFcGSkoV1/ZF4hWWC5yu1/VYfZGb19ZmVOvH25ea36AQ==}
+    dev: false
 
   /@next/env@14.2.35:
     resolution: {integrity: sha512-DuhvCtj4t9Gwrx80dmz2F4t/zKQ4ktN8WrMwOuVzkJfBilwAwGr6v16M5eI8yCuZ63H9TTuEU09Iu2HqkzFPVQ==}

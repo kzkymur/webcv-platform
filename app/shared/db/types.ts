@@ -7,6 +7,7 @@ export type FileType =
   | "homography-json"
   | "undist-json"
   | "figure"
+  | "sequence"
   | "other";
 
 export type FileEntry = {

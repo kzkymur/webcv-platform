@@ -62,7 +62,7 @@ async function saveToOPFS(bytes: Uint8Array) {
   const w: FileSystemWritableFileStream = await fh.createWritable({ keepExistingData: false });
   try {
     await w.seek(0);
-    await w.write(new Blob([bytes]));
+    await w.write(new Blob([new Uint8Array(bytes)]));
     await w.truncate(bytes.length);
   } finally {
     await w.close();

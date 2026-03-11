@@ -7,6 +7,7 @@
         - 後方互換：`2-calibrate-scenes/<runTs>/cam-<cam>/remapXY.xy`、`2-calibrate-scenes/<runTs>_cam-<cam>_remapXY.xy`
       - インター（将来/互換）：`2-calibrate-scenes/<runTs>/cam-<A>_to_cam-<B>_mappingXY.xy`（他、レガシーの canonical / per‑frame も認識）
         - 現行パイプラインは H のみ出力で `mappingXY.xy` を生成しないため、通常は undist のみが候補になります。
+      - 読み込み時は `getFile(path)` の `data` が存在する場合のみ `Float32Array` として解釈する（`undefined` データは無効扱い）。
   - WebGL パイプライン（2 パス）：
     - Pass1（undist）：ソース動画 × undist XY → FBO。
     - Pass2（inter）：Pass1 出力 × inter XY → 画面（canvas）。

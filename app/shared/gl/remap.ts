@@ -241,6 +241,8 @@ export class RemapRenderer {
     if (!usingStatic && (!v || v.readyState < 2)) return false;
     if (!this.undistSize || !this.interDestSize) return false;
     if (!this.texVideo || !this.texUndist || !this.texUndistMapXY || !this.texInterMapXY) return false;
+    const srcW = usingStatic ? this.staticSize!.width : v!.videoWidth;
+    const srcH = usingStatic ? this.staticSize!.height : v!.videoHeight;
 
     // Update video texture
     if (v) {
@@ -269,8 +271,8 @@ export class RemapRenderer {
     gl.uniform1i(locMapXY, 1);
     gl.uniform2f(
       locSrcSize,
-      usingStatic ? this.staticSize!.width : v.videoWidth,
-      usingStatic ? this.staticSize!.height : v.videoHeight
+      srcW,
+      srcH
     );
     gl.uniform2f(locMapSrcSize, this.undistSize.width, this.undistSize.height);
     this.drawQuad();

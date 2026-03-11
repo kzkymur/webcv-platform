@@ -33,7 +33,9 @@ export default function Page() {
 
   // Camera device selection
   const [camIds] = useCameraIds();
-  const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>([]);
+  const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>(
+    []
+  );
   const [deviceId, setDeviceId] = useState<string>("");
   const source = useVideoSource(deviceId);
 
@@ -52,7 +54,12 @@ export default function Page() {
   const [laserPct, setLaserPct] = useState<number>(0);
   const ready = serialOk && !!Hinv;
 
-  const lastClickRef = useRef<{ x: number; y: number; gx: number; gy: number } | null>(null);
+  const lastClickRef = useRef<{
+    x: number;
+    y: number;
+    gx: number;
+    gy: number;
+  } | null>(null);
 
   // Enumerate devices; default to first selected id
   useEffect(() => {
@@ -61,7 +68,12 @@ export default function Page() {
       try {
         const vids = await listMergedVideoInputs();
         if (!mounted) return;
-        setDevices(vids.map((d) => ({ deviceId: d.deviceId, label: d.label || d.deviceId })));
+        setDevices(
+          vids.map((d) => ({
+            deviceId: d.deviceId,
+            label: d.label || d.deviceId,
+          }))
+        );
         const first = camIds.find((id) => !!id) || "";
         setDeviceId((prev) => (prev ? prev : first));
       } catch {}
@@ -101,10 +113,13 @@ export default function Page() {
           drawOverlay();
         };
         if (v.readyState >= 2) applyIdentity();
-        else v.addEventListener("loadedmetadata", applyIdentity, { once: true });
+        else
+          v.addEventListener("loadedmetadata", applyIdentity, { once: true });
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [source, selected?.mapXYPath]);
 
   // Init renderer on mount
@@ -154,33 +169,46 @@ export default function Page() {
     const v = videoRef.current;
     if (!r || !v) return;
     if (selected) return; // handled by the effect above
+    const renderer = r;
+    const video = v;
     function applyIdentity() {
       if (cancelled) return;
-      const w = v.videoWidth || 0;
-      const h = v.videoHeight || 0;
+      const w = video.videoWidth || 0;
+      const h = video.videoHeight || 0;
       if (!w || !h) return;
       const id = buildIdentityInterMap(w, h);
-      r.setUndistMapXY(id, { width: w, height: h });
-      r.setInterMapXY(id, { width: w, height: h });
+      renderer.setUndistMapXY(id, { width: w, height: h });
+      renderer.setInterMapXY(id, { width: w, height: h });
       drawOverlay();
     }
-    if (v.readyState >= 2) applyIdentity();
-    else v.addEventListener("loadedmetadata", applyIdentity, { once: true });
-    return () => { cancelled = true; };
+    if (video.readyState >= 2) applyIdentity();
+    else video.addEventListener("loadedmetadata", applyIdentity, { once: true });
+    return () => {
+      cancelled = true;
+    };
   }, [selected?.mapXYPath, source]);
 
   // Auto-select latest undistortion map by camera (device label sanitized)
   useEffect(() => {
     (async () => {
-      if (!deviceId) { setSelected(null); return; }
-      const label = devices.find((d) => d.deviceId === deviceId)?.label || deviceId;
+      if (!deviceId) {
+        setSelected(null);
+        return;
+      }
+      const label =
+        devices.find((d) => d.deviceId === deviceId)?.label || deviceId;
       const camName = sanitize(label);
       const files = await listFiles();
-      const xy = files.filter((f) => f.type === "remapXY" && f.path.startsWith("2-calibrate-scenes/"));
+      const xy = files.filter(
+        (f) => f.type === "remapXY" && f.path.startsWith("2-calibrate-scenes/")
+      );
       const matches: UndistItem[] = [];
       for (const f of xy) {
-        const m = f.path.match(/^2-calibrate-scenes\/([^/]+)\/cam-(.+?)_remapXY\.xy$/);
-        if (m && m[2] === camName) matches.push({ runTs: m[1], cam: m[2], mapXYPath: f.path });
+        const m = f.path.match(
+          /^2-calibrate-scenes\/([^/]+)\/cam-(.+?)_remapXY\.xy$/
+        );
+        if (m && m[2] === camName)
+          matches.push({ runTs: m[1], cam: m[2], mapXYPath: f.path });
       }
       matches.sort((a, b) => (a.runTs < b.runTs ? 1 : -1));
       setSelected(matches[0] || null);
@@ -217,15 +245,23 @@ export default function Page() {
   useEffect(() => {
     (async () => {
       const files = await listFiles();
-      const hs = files.filter((f) => f.type === "homography-json" && f.path.startsWith("4-galvo-calibration/"));
+      const hs = files.filter(
+        (f) =>
+          f.type === "homography-json" &&
+          f.path.startsWith("4-galvo-calibration/")
+      );
       const hout: HItem[] = [];
       for (const f of hs) {
-        const m = f.path.match(/^4-galvo-calibration\/([^/]+)-homography\.json$/);
+        const m = f.path.match(
+          /^4-galvo-calibration\/([^/]+)-homography\.json$/
+        );
         if (m) hout.push({ ts: m[1], path: f.path });
       }
       hout.sort((a, b) => (a.ts < b.ts ? 1 : -1));
       setHItems(hout);
-      setHSel((prev) => (prev && hout.some((x) => x.path === prev) ? prev : hout[0]?.path || ""));
+      setHSel((prev) =>
+        prev && hout.some((x) => x.path === prev) ? prev : hout[0]?.path || ""
+      );
     })();
   }, []);
 
@@ -245,7 +281,9 @@ export default function Page() {
       }
       try {
         if (!fe.data) throw new Error("missing data");
-        const json = JSON.parse(new TextDecoder().decode(new Uint8Array(fe.data)));
+        const json = JSON.parse(
+          new TextDecoder().decode(new Uint8Array(fe.data))
+        );
         // Accept both { H: number[9] } and { homography3x3: number[9] }
         const arr: number[] | undefined = Array.isArray(json?.H)
           ? json.H
@@ -271,7 +309,12 @@ export default function Page() {
   useEffect(() => {
     try {
       // eslint-disable-next-line no-console
-      console.log("[5] GalvoSync readiness", { serialOk, hasHinv: !!Hinv, hSel, deviceId });
+      console.log("[5] GalvoSync readiness", {
+        serialOk,
+        hasHinv: !!Hinv,
+        hSel,
+        deviceId,
+      });
     } catch {}
   }, [serialOk, Hinv, hSel, deviceId]);
 
@@ -298,13 +341,24 @@ export default function Page() {
       ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
       ctx.stroke();
       // text
-      const label = `cam=(${pt.x.toFixed(1)}, ${pt.y.toFixed(1)}) → galvo=(${pt.gx|0}, ${pt.gy|0})`;
+      const label = `cam=(${pt.x.toFixed(1)}, ${pt.y.toFixed(1)}) → galvo=(${
+        pt.gx | 0
+      }, ${pt.gy | 0})`;
       ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
       const w = ctx.measureText(label).width + 8;
       ctx.fillStyle = "rgba(0,0,0,0.6)";
-      ctx.fillRect(Math.min(pt.x + 10, can.width - w - 4), Math.max(4, pt.y - 14), w, 16);
+      ctx.fillRect(
+        Math.min(pt.x + 10, can.width - w - 4),
+        Math.max(4, pt.y - 14),
+        w,
+        16
+      );
       ctx.fillStyle = "#eaeaea";
-      ctx.fillText(label, Math.min(pt.x + 14, can.width - w), Math.max(16, pt.y));
+      ctx.fillText(
+        label,
+        Math.min(pt.x + 14, can.width - w),
+        Math.max(16, pt.y)
+      );
       ctx.restore();
     }
   }
@@ -319,18 +373,22 @@ export default function Page() {
     const sx = (ev.clientX - rect.left) * (can.width / rect.width);
     const sy = (ev.clientY - rect.top) * (can.height / rect.height);
 
-    let gx = Number.NaN, gy = Number.NaN;
+    let gx = Number.NaN,
+      gy = Number.NaN;
     if (Hinv) {
       const g = applyHomography(Hinv, sx, sy);
-      gx = g.x; gy = g.y;
+      gx = g.x;
+      gy = g.y;
     }
 
     const clamped = crampGalvoCoordinate({ x: gx, y: gy });
     lastClickRef.current = { x: sx, y: sy, gx: clamped.x, gy: clamped.y };
     drawOverlay();
 
-    if (galvoSync && serialOk && Number.isFinite(clamped.x) && Number.isFinite(clamped.y)) {
-      try { await serial?.setGalvoPos(clamped.x, clamped.y); } catch {}
+    if (galvoSync && serialOk) {
+      try {
+        await serial?.setGalvoPos(clamped.x, clamped.y);
+      } catch {}
     }
   }
 
@@ -343,7 +401,11 @@ export default function Page() {
           <div className="row" style={{ gap: 12, alignItems: "center" }}>
             <label className="row" style={{ gap: 6 }}>
               Source Camera
-              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)} disabled={devices.length === 0}>
+              <select
+                value={deviceId}
+                onChange={(e) => setDeviceId(e.target.value)}
+                disabled={devices.length === 0}
+              >
                 <option value="">(unselected)</option>
                 {devices.map((d) => (
                   <option key={d.deviceId} value={d.deviceId}>
@@ -357,14 +419,33 @@ export default function Page() {
                 if (serialOk) return;
                 const s = new SerialCommunicator();
                 const ok = await s.connect();
-                if (ok) { setSerial(s); setSerialOk(true); } else { try { await s.disconnect(); } catch {}; setSerial(null); setSerialOk(false); }
+                if (ok) {
+                  setSerial(s);
+                  setSerialOk(true);
+                } else {
+                  try {
+                    await s.disconnect();
+                  } catch {}
+                  setSerial(null);
+                  setSerialOk(false);
+                }
               }}
               disabled={serialOk}
             >
               {serialOk ? "Connected" : "Connect Microcontroller"}
             </button>
             {serialOk && (
-              <button onClick={async () => { try { await serial?.disconnect(); } catch {}; setSerial(null); setSerialOk(false); }}>Disconnect</button>
+              <button
+                onClick={async () => {
+                  try {
+                    await serial?.disconnect();
+                  } catch {}
+                  setSerial(null);
+                  setSerialOk(false);
+                }}
+              >
+                Disconnect
+              </button>
             )}
           </div>
         </div>
@@ -381,15 +462,21 @@ export default function Page() {
                   onClick={() => setHSel(h.path)}
                   title={h.path}
                 >
-                  <span style={{ width: 220, fontFamily: "monospace" }}>{h.ts}</span>
+                  <span style={{ width: 220, fontFamily: "monospace" }}>
+                    {h.ts}
+                  </span>
                   <span>{h.path}</span>
                 </div>
               ))}
               {hItems.length === 0 && (
-                <div style={{ opacity: 0.7 }}>No homography files found (run /4 calibration).</div>
+                <div style={{ opacity: 0.7 }}>
+                  No homography files found (run /4 calibration).
+                </div>
               )}
             </div>
-            <div style={{ opacity: 0.8, fontSize: 13 }}>H: {H ? "loaded" : "-"} / inverse: {Hinv ? "ok" : "-"}</div>
+            <div style={{ opacity: 0.8, fontSize: 13 }}>
+              H: {H ? "loaded" : "-"} / inverse: {Hinv ? "ok" : "-"}
+            </div>
           </section>
 
           <section className="col" style={{ gap: 8 }}>
@@ -402,11 +489,18 @@ export default function Page() {
                   checked={galvoSync}
                   onChange={(e) => setGalvoSync(e.target.checked)}
                   disabled={!ready}
-                  title={!serialOk ? "Connect Microcontroller first" : (!Hinv ? "Load a homography (Hinv)" : "" )}
+                  title={
+                    !serialOk
+                      ? "Connect Microcontroller first"
+                      : !Hinv
+                      ? "Load a homography (Hinv)"
+                      : ""
+                  }
                 />
                 Galvo Sync (click canvas to move)
                 <span style={{ fontSize: 12, opacity: 0.6 }}>
-                  [{serialOk ? "serial:ok" : "serial:-"}, {Hinv ? "Hinv:ok" : "Hinv:-"}]
+                  [{serialOk ? "serial:ok" : "serial:-"},{" "}
+                  {Hinv ? "Hinv:ok" : "Hinv:-"}]
                 </span>
               </label>
               <label className="row" style={{ gap: 6 }}>
@@ -417,10 +511,15 @@ export default function Page() {
                   max={100}
                   value={laserPct}
                   onChange={async (e) => {
-                    const v = Math.max(0, Math.min(100, Number(e.target.value) | 0));
+                    const v = Math.max(
+                      0,
+                      Math.min(100, Number(e.target.value) | 0)
+                    );
                     setLaserPct(v);
                     if (serialOk) {
-                      try { await serial?.setLaserOutput(v); } catch {}
+                      try {
+                        await serial?.setLaserOutput(v);
+                      } catch {}
                     }
                   }}
                   style={{ width: 70 }}

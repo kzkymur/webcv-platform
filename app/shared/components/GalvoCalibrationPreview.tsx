@@ -6,6 +6,7 @@ import { useVideoSource } from "@/shared/hooks/useVideoSource";
 import { formatTimestamp } from "@/shared/util/time";
 import { loadRemapXY, buildIdentityInterMap } from "@/shared/util/remap";
 import { putFile } from "@/shared/db";
+import { resampleRgbaToLongest } from "@/shared/image/scale";
 import type { FileEntry } from "@/shared/db/types";
 import type { GridParams, UndistItem } from "@/shared/calibration/galvoTypes";
 
@@ -127,17 +128,19 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
     const v = videoRef.current;
     if (!r || !v) return;
     if (selected) return; // handled by the effect above
+    const renderer = r;
+    const video = v;
     function applyIdentity() {
       if (cancelled) return;
-      const w = v.videoWidth || 0;
-      const h = v.videoHeight || 0;
+      const w = video.videoWidth || 0;
+      const h = video.videoHeight || 0;
       if (!w || !h) return;
       const id = buildIdentityInterMap(w, h);
-      r.setUndistMapXY(id, { width: w, height: h });
-      r.setInterMapXY(id, { width: w, height: h });
+      renderer.setUndistMapXY(id, { width: w, height: h });
+      renderer.setInterMapXY(id, { width: w, height: h });
     }
-    if (v.readyState >= 2) applyIdentity();
-    else v.addEventListener("loadedmetadata", applyIdentity, { once: true });
+    if (video.readyState >= 2) applyIdentity();
+    else video.addEventListener("loadedmetadata", applyIdentity, { once: true });
     return () => {
       cancelled = true;
     };
@@ -248,12 +251,13 @@ export const Preview = forwardRef<PreviewHandle, Props>(function Preview(
             if (!size) return;
             const ts = formatTimestamp(new Date());
             const path = `4-galvo-calibration/${ts}/manual-preview.rgb`;
+            const scaled = resampleRgbaToLongest(rgba, size.width, size.height, 640);
             await putFile({
               path,
               type: "rgb-image",
-              data: rgba.buffer as ArrayBuffer,
-              width: size.width,
-              height: size.height,
+              data: scaled.rgba.buffer as ArrayBuffer,
+              width: scaled.width,
+              height: scaled.height,
               channels: 4,
             } as FileEntry);
             alert(`Saved: ${path}`);

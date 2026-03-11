@@ -77,13 +77,17 @@ Scripts
   - `index.ts` shows how to instantiate and use the module inside React effects.
 - Key exported functions (C++ in `src-wasm/index.cpp`):
   - Buffers: `getU8Buffer`, `getU32Buffer`, `getI32Buffer`, `getFloatBuffer`, `getDoubleBuffer`, `getImgBuffer`, `clearBuffer`
-  - CV ops: `findChessboardCorners`, `calcInnerParams`, `calcUndistMap`, `undistort`, `undistortPoint`, `calcHomography`
+  - CV ops: `findChessboardCorners`, `calcInnerParams`, `calcUndistMap`, `undistort`, `undistortPoint`, `calcHomography`, `calcHomographyQuality`, `calcHomographyUndist`, `calcHomographyUndistQuality`
 
 Important
 
 - Always free buffers with `clearBuffer` (or `WM*.clear()`) to avoid leaking WASM memory.
 - Keep TS wrapper names and C++ export names in sync. If you add a new C++ function, add a corresponding method in `wrapper.ts` and adjust types.
 - Known mismatch to fix if used: C++ function is `Transform` (capital T) while the wrapper calls `transform`. Align names before use.
+
+Robust homography (Page 4)
+
+- Page 4 uses `cvCalcHomographyQuality(galvoPts, cameraPts, thrPx)` (RANSAC) to compute H (galvo→camera) and stores `{ metrics: { rmse, inliers, total } }` in the JSON. Default threshold is 3.0 px.
 
 File artifacts (layout)
 
@@ -128,6 +132,15 @@ Preview: treat `remapXY` like optical flow for visualization; when needed, displ
 - Avoid introducing barrel files that bloat bundles.
 - Linting uses ESLint with `@typescript-eslint`. Run a local lint pass before large refactors.
 - Keep rendering performant: memoize where helpful, avoid unnecessary effects, and reference the rules under `.agents/skills/vercel-react-best-practices/`.
+
+Rendering and Export Sizing
+
+- Longest side = 640 px rule: All image/video previews intended for user saving and all programmatic exports must ensure the longer edge is exactly 640 px (the other edge scales to preserve aspect).
+  - For Canvas-based previews that users may right‑click to save, set the canvas backing store so the longest side is 640 px. Example: page 2 (calibration) preview now fits by longest side.
+  - For WebGL captures (`RemapRenderer.readPixels()`), resample the RGBA buffer before saving via the helper in `app/shared/image/scale.ts`.
+  - Do not multiply exported resolution by device pixel ratio; exports are in CSS pixels (max 640 on the long side).
+  - Internal computation frames used by algorithms (e.g., Page 4 calibration diff frames) may remain at native resolution; only user-facing previews/exports need the 640 rule.
+  - Helper API: `fitToLongest(w,h,640)` for sizing, `resampleRgbaToLongest(rgba,w,h,640)` for RGBA scaling.
 
 Sidebar File System behavior
 

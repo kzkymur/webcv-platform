@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import { deleteFile, deleteMany, getFile, listFiles } from "@/shared/db";
 import { FileEntry } from "@/shared/db/types";
+import { exportFileEntry } from "@/shared/util/fileExport";
 import { buildTree, TreeNode } from "@/shared/util/tree";
 import { usePrefs } from "@/shared/store/prefs";
 
@@ -20,7 +21,8 @@ export default function FileSystemBrowser({
   const [anchor, setAnchor] = useState<string | null>(null); // last clicked file path (for shift)
   // viewer only; no import UI
   const [q, setQ] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyDelete, setBusyDelete] = useState(false);
+  const [busyExport, setBusyExport] = useState(false);
   const tree = useMemo(() => buildTree(files.map((f) => f.path)), [files]);
   const flat = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -200,12 +202,12 @@ export default function FileSystemBrowser({
         onSelect={setActive}
         filter={q}
       />
-      <div className="row" style={{ paddingTop: 4 }}>
+      <div className="row" style={{ paddingTop: 4, gap: 8 }}>
         <button
-          disabled={busy || (selected.size === 0 && !active)}
+          disabled={busyDelete || busyExport || (selected.size === 0 && !active)}
           onClick={async () => {
-            if (busy) return;
-            setBusy(true);
+            if (busyDelete || busyExport) return;
+            setBusyDelete(true);
             try {
               const paths = selected.size > 0 ? Array.from(selected) : active ? [active] : [];
               // Optimistic UI: remove immediately
@@ -232,12 +234,44 @@ export default function FileSystemBrowser({
                 alert(`Failed to delete ${failed} item(s)`);
               }
             } finally {
-              setBusy(false);
+              setBusyDelete(false);
             }
           }}
           title={selected.size > 1 ? `Delete ${selected.size} items` : undefined}
         >
-          {busy ? "Deleting…" : `Delete${selected.size > 1 ? ` (${selected.size})` : ""}`}
+          {busyDelete ? "Deleting…" : `Delete${selected.size > 1 ? ` (${selected.size})` : ""}`}
+        </button>
+        <button
+          disabled={busyDelete || busyExport || (selected.size === 0 && !active)}
+          onClick={async () => {
+            if (busyDelete || busyExport) return;
+            setBusyExport(true);
+            try {
+              const paths = selected.size > 0 ? Array.from(selected) : active ? [active] : [];
+              let failed = 0;
+              for (const path of paths) {
+                try {
+                  const file = await getFile(path);
+                  if (!file) {
+                    failed++;
+                    continue;
+                  }
+                  await exportFileEntry(file);
+                } catch {
+                  failed++;
+                }
+              }
+              if (failed > 0) {
+                // eslint-disable-next-line no-alert
+                alert(`Failed to export ${failed} item(s)`);
+              }
+            } finally {
+              setBusyExport(false);
+            }
+          }}
+          title={selected.size > 1 ? `Export ${selected.size} items` : undefined}
+        >
+          {busyExport ? "Exporting…" : `Export${selected.size > 1 ? ` (${selected.size})` : ""}`}
         </button>
       </div>
     </div>

@@ -9,6 +9,7 @@ import { listMergedVideoInputs } from "@/shared/util/devices";
 import { formatTimestamp } from "@/shared/util/time";
 import { sanitize } from "@/shared/util/strings";
 import { putFile } from "@/shared/db";
+import { resampleRgbaToLongest } from "@/shared/image/scale";
 import type { FileEntry } from "@/shared/db/types";
 
 export type PreviewSelection =
@@ -31,13 +32,10 @@ async function loadRemapXY(
   path: string
 ): Promise<{ xy: Float32Array; width: number; height: number } | null> {
   const f = await getFile(path);
-  if (!f || f.type !== "remapXY" || !f.width || !f.height) return null;
+  if (!f || f.type !== "remapXY" || !f.width || !f.height || !f.data) return null;
   const w = f.width,
     h = f.height;
   const xy = new Float32Array(f.data);
-
-  console.log(f.path);
-  console.log(xy);
   if (xy.length !== w * h * 2) return null;
   return { xy, width: w, height: h };
 }
@@ -216,12 +214,13 @@ export default function RemapPreview({
         ? `3-remap-realtime/${ts}/cam-${sanitize(sel.camB)}_to_cam-${sanitize(sel.camA)}_preview.rgb`
         : `3-remap-realtime/${ts}/cam-${sanitize(sel.cam)}_undistorted_preview.rgb`;
     const outSize = r.getOutputSize() || { width: 0, height: 0 };
+    const scaled = resampleRgbaToLongest(rgba, outSize.width, outSize.height, 640);
     const fe: FileEntry = {
       path,
       type: "rgb-image",
-      data: rgba.buffer as ArrayBuffer,
-      width: outSize.width,
-      height: outSize.height,
+      data: scaled.rgba.buffer as ArrayBuffer,
+      width: scaled.width,
+      height: scaled.height,
       channels: 4,
     };
     await putFile(fe);

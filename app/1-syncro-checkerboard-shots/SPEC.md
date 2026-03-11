@@ -5,6 +5,7 @@
     - 右サイドバー＝Device Settings（共通）。ここで選択したカメラ一覧（namespaced localStorage: `cameraIds`）をこのページが参照します。
     - メイン＝選択済みカメラごとのプレビューと撮影操作。
   - 「Capture All」クリックで、表示中の全カメラを同一タイムスタンプで同時撮影します。
+  - タイマー撮影：ヘッダーの `Timer (s)` に秒数を設定し `Start` を押すと、設定時間の経過後に自動で「Capture All」を実行します。`Cancel` で中断できます。
   - 主用途：チェッカーボードやシーンの同期撮影（ページ2・6の入力）。
   - ファイル選択イベントは受け取りますが、このページではプレビュー表示しません（プレビューは Home）。
 
@@ -22,6 +23,10 @@
   - プレビュー上部の「Save Format」（`RGBA 8-bit` / `Grayscale 8-bit`）。
   - 永続化：namespaced localStorage `shotOptions: Record<deviceId, { fmt }>`。
   - 既定は `rgba8`。gray16 等は未対応（将来拡張）。
+
+- タイマーの永続化：
+  - namespaced localStorage に `shotTimer: { seconds: number }` として最後に設定した秒数を保存します。
+  - タイマー起動中（`Start` 済み）は `Cancel` が表示され、起動中のタイマーはページ離脱時に安全に破棄されます。
 
 - その他メモ：
   - このページではファイルシステムのプレビューは表示しません（Home のみ）。

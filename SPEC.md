@@ -47,6 +47,10 @@
   - Home: 選択したファイルを 2D Canvas にプレビュー表示（タイプに応じて描画）。
   - その他のページ: プレビューは不要。選択イベントは各ページの機能（例: 入力の切替、参照パスの設定など）に用います。
 - ファイル名の編集は不可で OK ですが、削除機能は実装してください。
+- ファイルシステム操作ボタンは `Delete` と `Export` を提供します。
+  - `Export` は選択中のファイル（複数選択可）をダウンロードします。
+  - `rgb-image` / `grayscale-image` は PNG に変換し、保存済みの解像度をそのまま保持して保存します。
+  - JSON 系（`*.json` / `homography-json` / `undist-json` / `figure` / `sequence`）は JSON バイナリをそのまま保存します。
 - SQLite Wasm (OPFS) なので、保存・削除したファイルは全ページで共通です。これが基軸となりユーザは各ページの機能を協調的に使用してその目的を達成します。
 
 ## 4. ログフッター（共有・リサイズ可、2026-02-25 追加）
@@ -141,6 +145,12 @@
   - A/B で事前処理が異なると同じ画像群でもコーナー検出結果→内部パラメータ→remap が変動します。
   - ログに `Preprocess A=..., B=...` を出力するようにし、差異を可視化しました。
 - Normal モデルの歪み係数は安定化のため 8 要素固定で保存し、`k1,k2,p1,p2,k3` の5要素のみを保持、`k4..k6` は 0 に正規化します（`calcInnerParams`/`calcInnerParamsExt`）。
+- 小画像のチェッカーボード検出は長辺 640px 基準で実施します（2026-03-06）。
+  - 対象: ページ2の本検出と Pre‑Detect Preview（共有プレビュー）。
+  - 実装: WASM/C++ で classic（`findChessboardCorners`）を先に実行し、失敗時のみ `findChessboardCornersSB` を実行。
+  - ルール: 入力の長辺が 640px 未満のときのみ、検出専用に長辺 640px へアップスケール（`INTER_CUBIC`）。
+  - サブピクセル化: classic 成功時は `cornerSubPix` を適用。SB フォールバック成功時は SB 出力点を使用。
+  - 角検出後、サブピクセル化されたコーナー座標を元画像サイズへ逆スケールしてから後段処理へ渡します。
 
 ## Undistortion Auto‑Select（2026-02-25 追記）
 
@@ -153,6 +163,22 @@
 - 画像保存（ページ3/4のプレビュー保存・キャリブレーション基準/差分の保存）は、`RemapRenderer.readPixels()` で WebGL のデフォルトフレームバッファから取得します。
 - これを安定させるため `app/shared/gl/remap.ts` の WebGL2 コンテキスト生成時に `preserveDrawingBuffer: true` を指定しました。これにより rAF の描画完了後もバッファ内容が保持され、UI ハンドラなど別タイミングでの `readPixels()` が黒（全0）になりません。
 - パフォーマンス影響が問題になる場合は、将来的に「最終出力もオフスクリーンFBOに描画→そこから `readPixels()`」へ切り替えると `preserveDrawingBuffer` を外せます。
+
+## Rendering / Export Policy（2026-03-03 追加）
+
+- 出力解像度の統一: 画像・動画のユーザー向けレンダリング／エクスポートは「長辺=640px」を必須とします（アスペクト比維持）。
+  - Canvas プレビュー（右クリック保存され得るもの）はキャンバスのバックストアサイズを長辺=640pxに設定します。
+  - WebGL キャプチャ（`readPixels()`）からファイル保存する場合は、保存前に RGBA をリスケールして長辺=640px に揃えます。
+  - デバイスピクセル比はエクスポート解像度に反映しません（640px は CSS ピクセル基準）。
+  - アルゴリズム内部で用いる中間フレーム（キャリブレーションの差分画像など）はこの限りではありません（精度優先でネイティブ解像度維持）。
+  - 実装ヘルパー: `app/shared/image/scale.ts` の `fitToLongest()` / `resampleRgbaToLongest()` を使用してください。
+
+## Type Safety Notes（2026-03-11 追記）
+
+- `remapXY` ローダー（`app/shared/util/remap.ts` と `app/shared/components/RemapPreview.tsx`）は、`getFile(path)` の戻り値に対して `data` 必須チェックを行ってから `Float32Array` を生成します。
+- OPFS への Blob 書き込みは `new Uint8Array(bytes)` で `ArrayBuffer` バックの view を明示的に作成してから書き込みます（新しい TypeScript DOM 型との整合）。
+- RGBA リサンプル時の `ImageData` 生成は入力配列を `Uint8ClampedArray` にコピーしてから行います（`ArrayBufferLike` 由来の型不一致回避）。
+- WebGL remap 系の identity fallback は、`renderer`/`video` 参照をローカル変数へ固定して null 安全に実行します。
 
 ## Stream Abstraction（2026-02-27 追記）
 
@@ -185,6 +211,21 @@
 - 右サイドバー Device Settings に「WebSocket Cameras」を追加。
 - 入力: `ws://...` または `wss://...`。`Add` で `wsCameras: string[]` に保存し、全ページのカメラ選択セレクトに `(WS) <url>` として出現。
 - 複数追加可能。各エントリに `Remove` ボタン。
+
+## Page 8 – Laser Automatic Operation（2026-03-11 更新）
+
+- 目的: ページ7で作成した図形とレーザー出力をタイムラインで自動制御。
+- 保存形式: `FileEntry.type === "sequence"`、パスは `8-laser-automatic-operation/<ts>.seq`。
+- JSON 仕様 v1:
+  - `schemaVersion: 1`
+  - `fragments: scan-figure[]`
+  - `scan-figure`: `{ type: "scan-figure", t: sec, duration: sec, figurePath: string, mode?: "outline", rateHz?: number, laserPct?: number }`
+- 実行: `@kzkymur/sequencer` の `IndependentSequencer`（tick は `Rate(Hz)` スライダで `pitch=1000/rateHz`。既定200Hz）。
+- `Add` ボタン押下時は JSON 追記だけでなく Sequencer インスタンスも即時再構築し、Timeline キャンバスに追加フラグメントを直ちに反映する。
+- レーザー: `laserPct` 指定時は開始時に即変更。終了時の復帰なし。シーケンス全体終了/Stopで `A0`。
+- プレビュー: Live undist + H（galvo→camera）重畳で照射点をリアルタイム描画。
+- シーケンスに含まれる `scan-figure` ポリゴンをページ7同様に重畳表示し、再生中の該当フラグメントをハイライト表示する。
+- UI状態同期: 再生中は `Start` disabled / `Stop` enabled。自然終了または Stop で `Start` enabled / `Stop` disabled に戻す。
 
 ## Camera Y16 Pipeline（2026-02-27 更新）
 

@@ -118,6 +118,21 @@ export default function Page() {
                 </div>
               </div>
             </div>
+            <div className="panel">
+              <div className="col" style={{ gap: 6 }}>
+                <a href="/8-laser-automatic-operation">
+                  <b>8. Laser Automatic Operation</b>
+                </a>
+                <div style={{ opacity: 0.85, fontSize: 14 }}>
+                  Build and run timelines that drive galvo scans. Add
+                  <em>scan‑figure</em> fragments (outline) with optional laser %.
+                  Save as <code>8-laser-automatic-operation/&lt;ts&gt;.seq</code>
+                  with type <code>sequence</code>. Real‑time preview overlays the
+                  current laser point on the undistorted feed using the selected
+                  galvo→camera homography.
+                </div>
+              </div>
+            </div>
           </section>
           {activeFile && (
             <section>

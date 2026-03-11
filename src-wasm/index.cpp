@@ -24,6 +24,7 @@ using namespace std;
 
 // const int CHESS_NUM_X = 9, CHESS_NUM_Y = 6, BLOCK_SIZE = 25;
 const int CHESS_NUM_X = 10, CHESS_NUM_Y = 7;
+const int CHESS_DETECT_LONGEST = 640;
 const double BLOCK_SIZE = 1.0f;
 
 int getCanvasImgDataSize (int width, int height) {
@@ -137,24 +138,64 @@ EXTERN EMSCRIPTEN_KEEPALIVE void timesBy2 (const void* pointer, int width, int h
 }
 
 EXTERN EMSCRIPTEN_KEEPALIVE bool findChessboardCorners (const void* pointer, int width, int height, void * corners_img_dest) {
-  const double BLOCK_SIZE = 1.0f;
-  cv::Mat img = readImg(pointer, width, height);
-  cv::Mat chess_img = img.clone();
-  cv::Size patternsize(CHESS_NUM_X, CHESS_NUM_Y);
-  cv::Size image_size = cv::Size(chess_img.cols, chess_img.rows);
-  cv::Mat grayImg = cv::Mat(image_size, CV_8UC1);
-  cv::cvtColor(chess_img, grayImg, cv::COLOR_RGBA2GRAY);
-  // vector<cv::Point3f> corners_local;
-  vector<cv::Point2f> image_points;
+  if (width <= 0 || height <= 0) return false;
 
-  // for (int i = 0; i < CHESS_NUM_X * CHESS_NUM_Y; i++) {
-  //   corners_local.push_back(cv::Point3f(BLOCK_SIZE * (i % CHESS_NUM_X), BLOCK_SIZE * ((double)i / CHESS_NUM_Y), 0.0f));
-  // }
+  cv::Mat img = readImg(pointer, width, height);
+  cv::Mat grayImg;
+  cv::cvtColor(img, grayImg, cv::COLOR_RGBA2GRAY);
+
+  cv::Mat detectGray = grayImg;
+  float scaleX = 1.0f;
+  float scaleY = 1.0f;
+  const int longest = std::max(width, height);
+  if (longest > 0 && longest < CHESS_DETECT_LONGEST) {
+    const float scale = (float)CHESS_DETECT_LONGEST / (float)longest;
+    const int detectW = std::max(1, (int)std::round((float)width * scale));
+    const int detectH = std::max(1, (int)std::round((float)height * scale));
+    cv::resize(grayImg, detectGray, cv::Size(detectW, detectH), 0.0, 0.0, cv::INTER_CUBIC);
+    scaleX = (float)detectW / (float)width;
+    scaleY = (float)detectH / (float)height;
+  }
+
+  vector<cv::Point2f> image_points;
 
   // チェスボードの内側コーナー位置を求める
   cout << "let's find chess corners" << endl;
-  bool found = cv::findChessboardCorners(chess_img, cv::Size(CHESS_NUM_X, CHESS_NUM_Y), image_points, cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_NORMALIZE_IMAGE + cv::CALIB_CB_FAST_CHECK);
+  bool foundClassic = cv::findChessboardCorners(
+    detectGray,
+    cv::Size(CHESS_NUM_X, CHESS_NUM_Y),
+    image_points,
+    cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_NORMALIZE_IMAGE + cv::CALIB_CB_FILTER_QUADS
+  );
+  bool usedSbFallback = false;
+  bool found = foundClassic;
+  if (!foundClassic) {
+    image_points.clear();
+    found = cv::findChessboardCornersSB(
+      detectGray,
+      cv::Size(CHESS_NUM_X, CHESS_NUM_Y),
+      image_points,
+      cv::CALIB_CB_NORMALIZE_IMAGE
+    );
+    usedSbFallback = found;
+  }
   if (found) {
+    if (!usedSbFallback) {
+      // refine classic detector output to subpixel accuracy
+      cv::cornerSubPix(
+        detectGray,
+        image_points,
+        cv::Size(11, 11),
+        cv::Size(-1, -1),
+        cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 30, 1e-3)
+      );
+    }
+    if (scaleX != 1.0f || scaleY != 1.0f) {
+      for (auto& p : image_points) {
+        p.x /= scaleX;
+        p.y /= scaleY;
+      }
+    }
     cout << "chess corners found" << endl;
     writeMat(vecPoint2f2Mat(image_points), corners_img_dest);
     return true;
@@ -365,6 +406,71 @@ EXTERN EMSCRIPTEN_KEEPALIVE void calcHomography(void * galvoDots, void * cameraD
   cv::Mat h = cv::findHomography(camera, galvo, cv::FM_LMEDS);
   h.convertTo(h, CV_32F);
   writeMat(h, dest);
+}
+
+// Robust variant (no undistortion): computes H from A -> B using RANSAC and returns basic quality metrics.
+// Inputs: aDots (float32 [length*2]), bDots (float32 [length*2]), length (number of points),
+//         ransacReprojThreshPx (pixels, e.g., 3.0),
+// Outputs: hDest = 3x3 float32 matrix (row-major),
+//          metricsDest = float32[2] where [0]=RMSE over inliers (px), [1]=inlier count (as float)
+EXTERN EMSCRIPTEN_KEEPALIVE void calcHomographyQuality(
+  void * aDots,
+  void * bDots,
+  int length,
+  float ransacReprojThreshPx,
+  void* hDest,
+  void* metricsDest
+) {
+  // Read points
+  cv::Mat aMat = readPointsVec2f(aDots, length);
+  cv::Mat bMat = readPointsVec2f(bDots, length);
+  std::vector<cv::Point2f> aPts = mat2VecPoint2f(aMat);
+  std::vector<cv::Point2f> bPts = mat2VecPoint2f(bMat);
+
+  // Guard: need at least 4 correspondences
+  if ((int)aPts.size() < 4 || (int)bPts.size() < 4) {
+    cv::Mat hI = cv::Mat::eye(3, 3, CV_32F);
+    writeMat(hI, hDest);
+    cv::Mat metrics(1, 2, CV_32F);
+    metrics.at<float>(0) = 1e9f;
+    metrics.at<float>(1) = 0.0f;
+    writeMat(metrics, metricsDest);
+    return;
+  }
+
+  // Compute H with RANSAC
+  cv::Mat inlierMask;
+  cv::Mat h64 = cv::findHomography(aPts, bPts, cv::RANSAC, std::max(0.0f, ransacReprojThreshPx), inlierMask);
+  cv::Mat h;
+  if (h64.empty()) {
+    h = cv::Mat::eye(3, 3, CV_32F);
+  } else {
+    h64.convertTo(h, CV_32F);
+  }
+  writeMat(h, hDest);
+
+  // Compute RMSE on inliers (in current pixel domain)
+  double se = 0.0;
+  int inliers = 0;
+  for (int i = 0; i < (int)aPts.size(); i++) {
+    const bool ok = inlierMask.empty() ? true : (!!inlierMask.at<uchar>(i));
+    if (!ok) continue;
+    float x = aPts[i].x, y = aPts[i].y;
+    float X = h.at<float>(0,0)*x + h.at<float>(0,1)*y + h.at<float>(0,2);
+    float Y = h.at<float>(1,0)*x + h.at<float>(1,1)*y + h.at<float>(1,2);
+    float Z = h.at<float>(2,0)*x + h.at<float>(2,1)*y + h.at<float>(2,2);
+    if (Z == 0.f) Z = 1e-6f;
+    cv::Point2f p(X / Z, Y / Z);
+    double dx = (double)p.x - (double)bPts[i].x;
+    double dy = (double)p.y - (double)bPts[i].y;
+    se += dx * dx + dy * dy;
+    inliers++;
+  }
+  float rmse = (inliers > 0) ? (float)std::sqrt(se / (double)inliers) : 1e9f;
+  cv::Mat metrics(1, 2, CV_32F);
+  metrics.at<float>(0) = rmse;
+  metrics.at<float>(1) = (float)inliers;
+  writeMat(metrics, metricsDest);
 }
 
 EXTERN EMSCRIPTEN_KEEPALIVE void calcHomographyUndist(void * aDots, void * bDots, int length, void* intrA, void* distA, void* intrB, void* distB, void* dest) {

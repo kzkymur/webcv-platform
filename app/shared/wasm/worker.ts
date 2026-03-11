@@ -187,6 +187,37 @@ self.onmessage = async (ev: MessageEvent<any>) => {
     return;
   }
 
+  // cv/calcHomographyQuality (no undist, with RANSAC metrics)
+  if (type === "cv/calcHomographyQuality") {
+    const { aPoints, bPoints, reprojThreshPx } = ev.data as any;
+    const Module = await getModule();
+    try {
+      const n = Math.min(new Float32Array(aPoints).length, new Float32Array(bPoints).length) / 2;
+      const aPtr = new WMF32A(Module as any, n * 2);
+      const bPtr = new WMF32A(Module as any, n * 2);
+      aPtr.data = new Float32Array(aPoints).subarray(0, n * 2);
+      bPtr.data = new Float32Array(bPoints).subarray(0, n * 2);
+      const hPtr = new WMF32A(Module as any, 9);
+      const mPtr = new WMF32A(Module as any, 2);
+      (Module as any).ccall(
+        "calcHomographyQuality",
+        null,
+        ["number", "number", "number", "number", "number", "number"],
+        [aPtr.pointer, bPtr.pointer, n, +reprojThreshPx || 3.0, hPtr.pointer, mPtr.pointer]
+      );
+      const hCopy = hPtr.data;
+      const mCopy = mPtr.data;
+      aPtr.clear();
+      bPtr.clear();
+      hPtr.clear();
+      mPtr.clear();
+      (self as any).postMessage({ id, ok: true, type: "cv/calcHomographyQuality", H: hCopy.buffer, metrics: mCopy.buffer }, [hCopy.buffer as any, mCopy.buffer as any]);
+    } catch (e) {
+      (self as any).postMessage({ id, ok: false, type: "cv/calcHomographyQuality", error: String(e || "unknown error") });
+    }
+    return;
+  }
+
   // cv/calcInnerParamsExt
   if (type === "cv/calcInnerParamsExt") {
     const { width, height, pointsList } = ev.data as { id: number; type: string; width: number; height: number; pointsList: ArrayBuffer[] };

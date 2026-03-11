@@ -1,4 +1,8 @@
-import { crampGalvoCoordinate, GALVO_MAX_X, GALVO_MAX_Y } from "@/shared/util/calcHomography";
+import {
+  crampGalvoCoordinate,
+  GALVO_MAX_X,
+  GALVO_MAX_Y,
+} from "@/shared/util/calcHomography";
 
 // TeencyCommunicator was removed; SerialCommunicator below is the single source.
 
@@ -15,7 +19,9 @@ export class SerialCommunicator {
       this.port = await (navigator as any).serial.requestPort();
       if (!this.port) return false;
       await this.port.open({ baudRate: 115200 });
-      this.writer = (this.port.writable as WritableStream<Uint8Array>).getWriter();
+      this.writer = (
+        this.port.writable as WritableStream<Uint8Array>
+      ).getWriter();
       await this.writer.write(this.encoder.encode("HELLO\n"));
       return true;
     } catch (e) {
@@ -27,8 +33,12 @@ export class SerialCommunicator {
   }
 
   async disconnect() {
-    try { await this.writer?.close(); } catch {}
-    try { await this.port?.close(); } catch {}
+    try {
+      await this.writer?.close();
+    } catch {}
+    try {
+      await this.port?.close();
+    } catch {}
     this.writer = null;
     this.port = null;
   }
@@ -45,19 +55,18 @@ export class SerialCommunicator {
 
   async setGalvoPos(x: number, y: number) {
     // Apply legacy center-shift + wrap, then clamp (old behavior)
-    const clamped = crampGalvoCoordinate({ x, y });
-    const sx = (clamped.x + GALVO_MAX_X / 2 + 1) % (GALVO_MAX_X + 1);
-    const sy = (clamped.y + GALVO_MAX_Y / 2 + 1) % (GALVO_MAX_Y + 1);
-    await this.send(`B${Math.floor(sx)},${Math.floor(sy)}`);
+    // const clamped = crampGalvoCoordinate({ x, y });
+    // const sx = (clamped.x + GALVO_MAX_X / 2 + 1) % (GALVO_MAX_X + 1);
+    // const sy = (clamped.y + GALVO_MAX_Y / 2 + 1) % (GALVO_MAX_Y + 1);
+    // await this.send(`B${Math.floor(sx)},${Math.floor(sy)}`);
 
-    /*
     // Newer/raw implementation (no center shift, direct send):
     // Source: removed app/shared/hardware/serial.ts
     // Uncomment to use raw XY (ensure downstream expects this convention)
-    // const xi = Math.floor(x);
-    // const yi = Math.floor(y);
-    // await this.send(`B${xi},${yi}`);
-    */
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    console.log(`B${xi},${yi}`);
+    await this.send(`B${xi},${yi}`);
   }
 }
 

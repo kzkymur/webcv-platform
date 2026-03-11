@@ -4,6 +4,7 @@
 - プレビュー：
     - カメラA/Bを選択すると、両カメラで共通するタイムスタンプのみが各プレビューの Frame セレクトに表示される。
     - ページ2の Pre‑Detect Preview と同等の UI（Contrast / Invert / Show corners）。角検出は undist 画像に対して実行。
+    - 角検出は classic（`findChessboardCorners`）を先に使い、失敗時のみ `findChessboardCornersSB` にフォールバックする。入力の長辺が 640px 未満なら検出専用に長辺 640px へアップスケール（`INTER_CUBIC`）して検出し、検出後の座標は元解像度へ逆スケールして扱う（表示・クリック座標は常に元解像度基準）。
     - 選択中の ts は A/B のプレビュー間で同期される。
     - undist マップは `2-calibrate-scenes/<runTs>/cam-<A|B>_remapXY.xy` のうち最新を自動適用（サイズ不一致時は raw を使用）。
   - 実行：

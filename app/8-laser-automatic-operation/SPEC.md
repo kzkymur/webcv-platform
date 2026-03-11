@@ -2,9 +2,30 @@
   - TypeScript と Web Serial API で実装
   - パス：8-laser-automatic-operation
   - 5. の機能を自動化する。具体的には @kzkymur/sequencer を使用してガルバノスキャナ・レーザーの操作をシーケンス管理する。
-  - シーケンスに追加するフラグメントは、1. ページ 6 の照射対象管理機能で作成されたポリゴンをスキャンするようにレーザー操作を行うものと、2. レーザーの出力変更を行うもの とする。
-  - UI は@kzkymur/sequencer が提供するシーケンス UI と、追加用の UI から成る。追加用の UI は以下の 2 つから構成され、それぞれ開始時刻・duration を設定することでシーケンサーにフラグメントを追加できるようにする
-    1. ファイルシステムより照射対象のポリゴンを選択するもの。ファイルシステム型の UI で、ページ 7 で作成した照射対象を選択する
-    2. レーザー出力を選択するもの。スライダー UI
-  - シーケンスの情報もファイルシステムに同期的に保存されるようにする。テキストエリアと保存ボタンから成る UI で構成され、ファイル名を入力後、保存ボタンでファイルシステムに保存される。ファイル名は「7-laser-automatic-operation/日時.seq」
+  - シーケンスに追加するフラグメントは「照射対象ポリゴンをスキャン（レーザー出力を内包）」のみとする。
+  - UI は@kzkymur/sequencer のタイムライン描画を使用し、追加 UI では「図形・開始秒・継続秒・モード周期秒・走査モード・レーザー出力(%)」を設定して追加する。
+  - シーケンスの情報もファイルシステムに同期的に保存されるようにする。テキストエリアと保存ボタンから成る UI で構成され、ファイル名を入力後、保存ボタンでファイルシステムに保存される。ファイル名は「8-laser-automatic-operation/日時.seq」
 - ファイルシステムにあるシーケンスをロードする機能も併せて追加する。
+
+## 実装メモ（2026-03-11 更新）
+
+- 保存先はページ番号に合わせて `8-laser-automatic-operation/<YYYY-MM-DD_HH-mm-ss>.seq`。
+- FileType に `sequence` を追加（`listFiles()` で列挙しやすくする）。
+- シーケンサは `@kzkymur/sequencer` を使用（独立タイムライン: `IndependentSequencer`）。
+  - レート設定: UI の `Rate(Hz)` スライダは `setPitch(1000/rateHz)` に反映（既定 200Hz）。
+  - タイムライン描画: `renderToCanvas` に渡す `width/height` は固定値ではなく、Canvas の表示サイズ（`getBoundingClientRect()`）に同期する。Canvas バッファは `devicePixelRatio` を反映して再設定し、表示サイズと描画計算幅の不一致を防ぐ。
+  - `Add` 押下時は JSON 追記に加えて Sequencer を即時再構築し、タイムライン可視化へ追加フラグメントをその場で反映する。
+- フラグメント（JSON 仕様 v1）:
+  - `scan-figure`: `{ type, t(sec), duration(sec), figurePath, mode?: 'outline' | 'raster' | 'grid-raster-inward', cycleSec?: number, rateHz?: number, laserPct?: number }`
+    - 走査戦略は `ScanStrategy` インタフェースに準拠（`app/shared/scan/strategies.ts`）。
+    - `cycleSec` は mode 挙動の1周期秒数（既定 1.0s）。`duration` の間、この周期で同じ挙動をループする。
+    - `outline`: ポリゴン輪郭をループして走査。
+    - `raster`: ポリゴン走査線交点から生成したジグザグ経路（boustrophedon）で面内を走査。
+    - `grid-raster-inward`: 図形の外接矩形を 3x3 グリッドへ分割し、各セルにクリップした領域をセル内ラスタ走査。セル順はインデックス `1,9,2,8,3,7,4,6,5`（中心へ向かう順）。
+    - `laserPct` 指定時は開始時に即変更。終了しても元へは戻さない。シーケンス全体終了時のみ `A0`。
+  - `set-laser` フラグメントは廃止。
+- プレビュー: Live undist + オーバーレイ描画を行う。ガルバ→カメラはページ4の H を選択して適用。
+  - シーケンスに含まれる各 `scan-figure` のポリゴンをページ7と同様に重畳表示する。
+  - 再生中は現在時刻に該当するフラグメントのみハイライトし、照射点ドットも同時描画する。
+- 安全: Start/Stop はユーザ操作。Stop と自然終了のいずれでも `A0` を送信。
+- UI状態同期: 再生中は `Start` を無効化し `Stop` を有効化する。シーケンス自然終了時および `Stop` 実行時は自動で `Start` 有効 / `Stop` 無効に戻す。

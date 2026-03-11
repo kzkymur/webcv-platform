@@ -3,6 +3,7 @@
   - パス：/4-galvo-calibration
   - プレビューはページ3同様の 2 パス構成（undist → identity inter）。右上ヘッダーで Source Camera を選択し、マイコンに接続します。
   - undist マップが見つからない場合でも、ビデオのメタデータ読込後に identity マップを自動適用して raw 表示が常に出るようにする（空白キャンバスにならない）。
+    - identity 適用時は `renderer`/`video` 参照をローカル固定し、遅延イベント（`loadedmetadata`）でも null 安全に処理する。
 
  - 入力（undist の自動選択）：
    - 選択中カメラのラベルを sanitize した `<cam>` に対して、`2-calibrate-scenes/<runTs>/cam-<cam>_remapXY.xy` のうち最新を自動選択して適用（見つからない場合は raw 表示）。
@@ -20,7 +21,7 @@
       - `setGalvoPos(x,y)` → settle(10ms) → `setLaserOutput(%)` → onMs 待機 → フレーム取得 → `setLaserOutput(0)` → offMs 待機。
       - 取得フレームを `4-galvo-calibration/<ts>/x-<x>_y-<y>.rgb` に保存。
       - `screen` との差分からスポットを推定し（3×3 重心で微修正）、対応点（galvo ↔ camera）を蓄積。
-   3) 最低 4 点で `cvCalcHomography(galvoPts, cameraPts)` を実行し、H（galvo→camera）を求める。
+   3) 最低 4 点でロバスト推定を実行：`cvCalcHomographyQuality(galvoPts, cameraPts, thrPx=3.0)` を用いて RANSAC（reproj しきい値=3px）で外れ値を除去し、H（galvo→camera）を算出。`metrics: { rmse, inliers, total }` を JSON に同梱する。
    4) 出力 JSON：`4-galvo-calibration/<ts>-homography.json`（`homography-json`）
       - 例：`{ H:number[9], points:{ galvo:number[], camera:number[] }, params:{ grid, xRange, yRange, laserPct, timing:{ settleMs, onMs, offMs }, undistMap, cam, runTs } }`
 

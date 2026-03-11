@@ -27,7 +27,7 @@ Module['ready'] = new Promise((resolve, reject) => {
   readyPromiseResolve = resolve;
   readyPromiseReject = reject;
 });
-["_main","getExceptionMessage","___get_exception_message","_free","_memory","_helloWorld","_getU8Buffer","_getI32Buffer","_getU32Buffer","_getFloatBuffer","_getDoubleBuffer","_getImgBuffer","_clearBuffer","_timesBy2","_findChessboardCorners","_calcInnerParams","_calcInnerParamsExt","_calcInnerParamsFisheyeExt","_calcUndistMap","_calcUndistMapFisheye","_undistort","_undistortPoint","_calcHomography","_calcHomographyUndist","_calcHomographyUndistQuality","_Transform","_calcInterRemapUndist","___indirect_function_table","_fflush","onRuntimeInitialized"].forEach((prop) => {
+["_main","getExceptionMessage","___get_exception_message","_free","_memory","_helloWorld","_getU8Buffer","_getI32Buffer","_getU32Buffer","_getFloatBuffer","_getDoubleBuffer","_getImgBuffer","_clearBuffer","_timesBy2","_findChessboardCorners","_calcInnerParams","_calcInnerParamsExt","_calcInnerParamsFisheyeExt","_calcUndistMap","_calcUndistMapFisheye","_undistort","_undistortPoint","_calcHomography","_calcHomographyQuality","_calcHomographyUndist","_calcHomographyUndistQuality","_Transform","_calcInterRemapUndist","___indirect_function_table","_fflush","onRuntimeInitialized"].forEach((prop) => {
   if (!Object.getOwnPropertyDescriptor(Module['ready'], prop)) {
     Object.defineProperty(Module['ready'], prop, {
       get: () => abort('You are getting ' + prop + ' on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js'),
@@ -4971,6 +4971,8 @@ var wasmImports = {
   /** @export */
   invoke_viiidd: invoke_viiidd,
   /** @export */
+  invoke_viiiddi: invoke_viiiddi,
+  /** @export */
   invoke_viiii: invoke_viiii,
   /** @export */
   invoke_viiiidiid: invoke_viiiidiid,
@@ -5014,6 +5016,7 @@ var _calcUndistMapFisheye = Module['_calcUndistMapFisheye'] = createExportWrappe
 var _undistort = Module['_undistort'] = createExportWrapper('undistort');
 var _undistortPoint = Module['_undistortPoint'] = createExportWrapper('undistortPoint');
 var _calcHomography = Module['_calcHomography'] = createExportWrapper('calcHomography');
+var _calcHomographyQuality = Module['_calcHomographyQuality'] = createExportWrapper('calcHomographyQuality');
 var _calcHomographyUndist = Module['_calcHomographyUndist'] = createExportWrapper('calcHomographyUndist');
 var _calcHomographyUndistQuality = Module['_calcHomographyUndistQuality'] = createExportWrapper('calcHomographyUndistQuality');
 var _Transform = Module['_Transform'] = createExportWrapper('Transform');
@@ -5112,10 +5115,32 @@ function invoke_viiii(index,a1,a2,a3,a4) {
   }
 }
 
+function invoke_viiiddi(index,a1,a2,a3,a4,a5,a6) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1,a2,a3,a4,a5,a6);
+  } catch(e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_iiiii(index,a1,a2,a3,a4) {
   var sp = stackSave();
   try {
     return getWasmTableEntry(index)(a1,a2,a3,a4);
+  } catch(e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viiiii(index,a1,a2,a3,a4,a5) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1,a2,a3,a4,a5);
   } catch(e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -5292,17 +5317,6 @@ function invoke_v(index) {
   var sp = stackSave();
   try {
     getWasmTableEntry(index)();
-  } catch(e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_viiiii(index,a1,a2,a3,a4,a5) {
-  var sp = stackSave();
-  try {
-    getWasmTableEntry(index)(a1,a2,a3,a4,a5);
   } catch(e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;

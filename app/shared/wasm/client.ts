@@ -83,6 +83,23 @@ export class WasmWorkerClient {
     return { H: new Float32Array(res.H) };
   }
 
+  async cvCalcHomographyQuality(aPoints: Float32Array, bPoints: Float32Array, reprojThreshPx = 3.0) {
+    const res = await this.req<{ ok: boolean; H?: ArrayBuffer; metrics?: ArrayBuffer } | any>({
+      type: "cv/calcHomographyQuality",
+      aPoints: aPoints.buffer,
+      bPoints: bPoints.buffer,
+      reprojThreshPx,
+    });
+    if (!res?.ok) throw new Error(res?.error || "cv/calcHomographyQuality failed");
+    const H = new Float32Array(res.H);
+    const m = new Float32Array(res.metrics);
+    const rmse = m[0] ?? Number.NaN;
+    const inliers = m[1] ?? 0;
+    const total = (aPoints.length / 2) | 0;
+    const inlierRatio = total > 0 ? inliers / total : 0;
+    return { H, rmse, inliers, total, inlierRatio };
+  }
+
   async cvCalcInnerParamsExt(width: number, height: number, pointsList: Float32Array[]) {
     const res = await this.req<{ ok: boolean; okFlag?: boolean; intr?: ArrayBuffer; dist?: ArrayBuffer; rvecs?: ArrayBuffer; tvecs?: ArrayBuffer } | any>({
       type: "cv/calcInnerParamsExt",

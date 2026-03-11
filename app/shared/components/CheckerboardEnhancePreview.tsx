@@ -110,13 +110,14 @@ export default function CheckerboardEnhancePreview({
         ? applyRemapXYBilinear(rgba, width, height, mapXY.xy)
         : rgba;
 
-      // Downscale for preview to keep CPU light
-      const maxW = 640;
-      const scale = Math.min(1, maxW / Math.max(1, width));
+      // Fit preview so that the longest side is exactly 640px (up/down scale).
+      // This also makes right‑click "Save image as…" produce a 640px-longest-side image.
+      const LONG = 640;
+      const scale = LONG / Math.max(1, Math.max(width, height));
       const pW = Math.max(1, Math.round(width * scale));
       const pH = Math.max(1, Math.round(height * scale));
 
-      // Build small grayscale buffer via nearest sampling
+      // Build grayscale buffer via nearest sampling
       const gray = new Uint8ClampedArray(pW * pH);
       for (let y = 0; y < pH; y++) {
         const sy = Math.min(height - 1, Math.floor(y / scale));

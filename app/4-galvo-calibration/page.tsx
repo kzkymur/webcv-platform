@@ -13,10 +13,18 @@ import { listMergedVideoInputs } from "@/shared/util/devices";
 import { formatTimestamp } from "@/shared/util/time";
 import { WasmWorkerClient } from "@/shared/wasm/client";
 import HeaderBar from "@/shared/components/GalvoCalibrationHeaderBar";
-import { Preview, type PreviewHandle } from "@/shared/components/GalvoCalibrationPreview";
+import {
+  Preview,
+  type PreviewHandle,
+} from "@/shared/components/GalvoCalibrationPreview";
 import RunPanel from "@/shared/components/GalvoCalibrationRunPanel";
 import LogFooterShell from "@/components/LogFooterShell";
-import type { GridParams, Range, Timing, UndistItem } from "@/shared/calibration/galvoTypes";
+import type {
+  GridParams,
+  Range,
+  Timing,
+  UndistItem,
+} from "@/shared/calibration/galvoTypes";
 import { sanitize } from "@/shared/util/strings";
 
 // Shared types are in app/shared/calibration/galvoTypes
@@ -28,18 +36,26 @@ export default function Page() {
 
   // Camera device selection
   const [camIds] = useCameraIds();
-  const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>([]);
+  const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>(
+    []
+  );
   const [deviceId, setDeviceId] = useState<string>("");
   const previewRef = useRef<PreviewHandle | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
-  const spotsRef = useRef<{ pts: { x: number; y: number }[]; last: { x: number; y: number } | null }>({ pts: [], last: null });
+  const spotsRef = useRef<{
+    pts: { x: number; y: number }[];
+    last: { x: number; y: number } | null;
+  }>({ pts: [], last: null });
 
   // Serial
   const [serial, setSerial] = useState<SerialCommunicator | null>(null);
   const [serialOk, setSerialOk] = useState(false);
 
   // Run params
-  const [grid, setGrid] = useState<{ nx: number; ny: number }>({ nx: 8, ny: 8 });
+  const [grid, setGrid] = useState<{ nx: number; ny: number }>({
+    nx: 8,
+    ny: 8,
+  });
   const [xRange, setXRange] = useState<{ min: number; max: number }>({
     min: 8192,
     max: 57344,
@@ -50,9 +66,11 @@ export default function Page() {
   });
   const [laserPct, setLaserPct] = useState<number>(5);
   // Timing: settle is fixed at 10 ms (no UI control)
-  const [timing, setTiming] = useState<{ settleMs: number; onMs: number; offMs: number }>(
-    { settleMs: 10, onMs: 120, offMs: 80 }
-  );
+  const [timing, setTiming] = useState<{
+    settleMs: number;
+    onMs: number;
+    offMs: number;
+  }>({ settleMs: 10, onMs: 120, offMs: 80 });
 
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState("");
@@ -79,7 +97,12 @@ export default function Page() {
       try {
         const vids = await listMergedVideoInputs();
         if (!mounted) return;
-        setDevices(vids.map((d) => ({ deviceId: d.deviceId, label: d.label || d.deviceId })));
+        setDevices(
+          vids.map((d) => ({
+            deviceId: d.deviceId,
+            label: d.label || d.deviceId,
+          }))
+        );
         const first = camIds.find((id) => !!id) || "";
         setDeviceId((prev) => (prev ? prev : first));
       } catch {}
@@ -97,15 +120,24 @@ export default function Page() {
   // Auto-select latest undistortion map for the chosen camera (by device label sanitized)
   useEffect(() => {
     (async () => {
-      if (!deviceId) { setSelected(null); return; }
-      const label = devices.find((d) => d.deviceId === deviceId)?.label || deviceId;
+      if (!deviceId) {
+        setSelected(null);
+        return;
+      }
+      const label =
+        devices.find((d) => d.deviceId === deviceId)?.label || deviceId;
       const camName = sanitize(label);
       const files = await listFiles();
-      const xy = files.filter((f) => f.type === "remapXY" && f.path.startsWith("2-calibrate-scenes/"));
+      const xy = files.filter(
+        (f) => f.type === "remapXY" && f.path.startsWith("2-calibrate-scenes/")
+      );
       const matches: UndistItem[] = [];
       for (const f of xy) {
-        const m = f.path.match(/^2-calibrate-scenes\/([^/]+)\/cam-(.+?)_remapXY\.xy$/);
-        if (m && m[2] === camName) matches.push({ runTs: m[1], cam: m[2], mapXYPath: f.path });
+        const m = f.path.match(
+          /^2-calibrate-scenes\/([^/]+)\/cam-(.+?)_remapXY\.xy$/
+        );
+        if (m && m[2] === camName)
+          matches.push({ runTs: m[1], cam: m[2], mapXYPath: f.path });
       }
       matches.sort((a, b) => (a.runTs < b.runTs ? 1 : -1));
       setSelected(matches[0] || null);
@@ -130,7 +162,12 @@ export default function Page() {
     return list;
   }
 
-  function estimateSpot(screen: Uint8Array, shot: Uint8Array, w: number, h: number): { cx: number; cy: number } | null {
+  function estimateSpot(
+    screen: Uint8Array,
+    shot: Uint8Array,
+    w: number,
+    h: number
+  ): { cx: number; cy: number } | null {
     // Simple diff on RGB sum; find brightest pixel and refine with 3x3 weighted centroid
     let bestIdx = -1;
     let bestVal = -1;
@@ -147,7 +184,7 @@ export default function Page() {
         }
       }
     }
-    if (bestIdx < 0 || bestVal < 10) return null;
+    if (bestIdx < 0 || bestVal < 150) return null;
     const by = Math.floor(bestIdx / row);
     const bx = (bestIdx % row) / 4;
     // local centroid
@@ -275,11 +312,14 @@ export default function Page() {
 
     appendLog(`Detected ${okShots} spots (of ${positions.length}).`);
     if (okShots >= 4) {
-      const Hres = await wrk.cvCalcHomography(
-        new Float32Array(galvoPts),
-        new Float32Array(camPts)
+      // Robust H estimation in undistorted domain using RANSAC (3px thr)
+      const thrPx = 3.0;
+      const res = await wrk.cvCalcHomographyQuality(
+        new Float32Array(galvoPts), // map from galvo → camera
+        new Float32Array(camPts),
+        thrPx
       );
-      const H = Array.from(Hres.H);
+      const H = Array.from(res.H);
       const out = {
         H,
         points: {
@@ -296,10 +336,12 @@ export default function Page() {
           cam: selected.cam,
           runTs: selected.runTs,
         },
+        metrics: { rmse: res.rmse, inliers: res.inliers, total: res.total },
       };
       const homPath = `4-galvo-calibration/${ts}-homography.json`;
       await putFile(jsonFile(homPath, out, "homography-json"));
       appendLog(`Saved homography: ${homPath}`);
+      appendLog(`H metrics — inliers ${res.inliers}/${res.total}, rmse=${res.rmse.toFixed(3)} px (thr=${thrPx}px)`);
     } else {
       appendLog("Insufficient points for homography (need ≥ 4).");
     }
@@ -324,13 +366,17 @@ export default function Page() {
             setSerial(s);
             setSerialOk(true);
           } else {
-            try { await s.disconnect(); } catch {}
+            try {
+              await s.disconnect();
+            } catch {}
             setSerial(null);
             setSerialOk(false);
           }
         }}
         onDisconnect={async () => {
-          try { await serial?.disconnect(); } catch {}
+          try {
+            await serial?.disconnect();
+          } catch {}
           setSerial(null);
           setSerialOk(false);
         }}
@@ -366,14 +412,15 @@ export default function Page() {
             setTiming={setTiming}
             busy={busy}
             canRun={serialOk}
-            disabledReason={!serialOk ? "Connect Microcontroller first" : undefined}
+            disabledReason={
+              !serialOk ? "Connect Microcontroller first" : undefined
+            }
             onStart={runCalibration}
             onCancel={() => {
               cancelRef.current = true;
               appendLog("Cancel requested; finishing current step…");
             }}
           />
-
         </div>
       </LogFooterShell>
     </>

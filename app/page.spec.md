@@ -2,7 +2,7 @@
   - Path: /
   - TypeScript only
   - Shows an English "Feature Index" (not a workflow). Pages are independent features; the index briefly explains each and where its inputs/outputs reside:
-    - 1. Syncro Checkerboard Shots — capture frames from selected cameras; saves to `1-syncro-checkerboard_shots/<ts>/cam-<name>.(rgb|gray)`.
+    - 1. Syncro Checkerboard Shots — capture frames from selected cameras; supports a simple delayed trigger (Timer in seconds). Saves to `1-syncro-checkerboard_shots/<ts>/cam-<name>.(rgb|gray)`.
     - 2. Calibrate Scenes — detects corners and computes per‑camera intrinsics/extrinsics and undistortion maps (single‑camera workflow). Writes artifacts under `2-calibrate-scenes/<runTs>/` including per‑camera `cam-<name>_calibration.json` and `cam-<name>_remapXY.xy`.
     - 6. Cameras Homography — select Camera A/B and a single shared timestamp; displays undistorted previews and computes a homography from that pair. Saves undist frames and JSON under `6-cameras-homography/<runTs>/`.
     - 3. Remap Realtime — lists detected remap fields (per‑camera undistortion) and previews the chosen field; live WebGL application is being integrated.
@@ -12,4 +12,9 @@
     - Left: File System
     - Right: Device Settings
     - Both widths are user-resizable via drag and are persisted across pages.
+  - File System actions:
+    - `Delete` removes selected files (or the active file when no multi-selection).
+    - `Export` downloads selected files (or active file):
+      - `rgb-image` / `grayscale-image`: exported as PNG in original stored resolution.
+      - JSON系 (`*.json`, `homography-json`, `undist-json`, `figure`, `sequence`): exported as raw JSON payload.
   - File preview: when a file is selected in the sidebar file system, render a 2D Canvas preview under the index.

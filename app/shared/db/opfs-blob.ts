@@ -44,7 +44,7 @@ export async function writeBlobToOPFS(path: string, bytes: Uint8Array): Promise<
   // @ts-ignore
   const w: FileSystemWritableFileStream = await fh.createWritable({ keepExistingData: false });
   try {
-    await w.write(new Blob([bytes]));
+    await w.write(new Blob([new Uint8Array(bytes)]));
   } finally {
     await w.close();
   }
@@ -81,4 +81,3 @@ export async function blobExistsInOPFS(path: string): Promise<boolean> {
   const buf = await readBlobFromOPFS(path);
   return !!buf;
 }
-

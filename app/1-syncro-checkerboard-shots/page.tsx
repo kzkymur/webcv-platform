@@ -21,6 +21,13 @@ import CameraPreview, {
 
 export default function Page() {
   const [ids] = useCameraIds();
+  // Timer (sec) for delayed capture
+  const [timerSec, setTimerSec] = useState<number>(() => {
+    const st = readNamespacedStore<{ shotTimer?: { seconds: number } }>();
+    return st.shotTimer?.seconds ?? 0;
+  });
+  const [armed, setArmed] = useState<boolean>(false);
+  const timerRef = useRef<number | null>(null);
   // Per-camera capture format
   const [fmtById, setFmtById] = useState<Record<string, CaptureFormat>>(() => {
     const st = readNamespacedStore<{
@@ -81,6 +88,38 @@ export default function Page() {
     }
   }
 
+  // Start/cancel timer without relying on effects for ticking (keep it simple)
+  function startTimer(): void {
+    if (armed || busy) return;
+    if (!timerSec || timerSec <= 0) return;
+    if (ids.length === 0) return;
+    // Persist last-used seconds
+    updateNamespacedStore({ shotTimer: { seconds: timerSec } });
+    if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    setArmed(true);
+    const ms = Math.round(timerSec * 1000);
+    timerRef.current = window.setTimeout(async () => {
+      timerRef.current = null;
+      setArmed(false);
+      await shootAll();
+    }, ms);
+  }
+
+  function cancelTimer(): void {
+    if (timerRef.current != null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setArmed(false);
+  }
+
+  // Clear timer on unmount to avoid stray triggers
+  useEffect(() => {
+    return () => {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
   return (
     <>
       <Sidebar
@@ -92,6 +131,35 @@ export default function Page() {
         <div className="row" style={{ justifyContent: "space-between" }}>
           <b>1. Syncro Checkerboard Shots</b>
           <div className="row" style={{ gap: 12 }}>
+            <div className="row" style={{ gap: 8, alignItems: "center" }}>
+              <label style={{ opacity: 0.8 }}>Timer (s)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={1}
+                value={Number.isFinite(timerSec) ? timerSec : 0}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setTimerSec(Number.isFinite(v) && v >= 0 ? v : 0);
+                }}
+                style={{ width: 80 }}
+                disabled={busy}
+              />
+              {!armed ? (
+                <button
+                  onClick={startTimer}
+                  disabled={busy || ids.length === 0 || !timerSec || timerSec <= 0}
+                  title="Start timer to auto-capture"
+                >
+                  Start
+                </button>
+              ) : (
+                <button onClick={cancelTimer} title="Cancel pending timer">
+                  Cancel
+                </button>
+              )}
+            </div>
             <button onClick={shootAll} disabled={busy || ids.length === 0}>
               Capture All ({ids.length})
             </button>
