@@ -4,7 +4,7 @@ import {
   CanvasHandle,
 } from "@/shared/stream/types";
 
-type ThermalFrame = {
+export type ThermalFrame = {
   w: number;
   h: number;
   scale: number;
@@ -71,6 +71,10 @@ export class WebSocketY16Source implements VideoStreamSource {
 
   constructor(url: string) {
     this.url = url;
+  }
+
+  getLatestFrame(): ThermalFrame | null {
+    return this.latest;
   }
 
   private ensureCanvas(w: number, h: number) {

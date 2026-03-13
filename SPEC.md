@@ -74,7 +74,7 @@
 - PC の Chrome で動けば OK。レスポンシブデザインは考慮しなくて良い
 - Wasm 処理は web worker で走らせる。postMessage を wrap して各関数の呼び出しを行う class を書いてそこに wasm と連携する全処理を集約する。
   - メモリ管理には既存の WM 系クラスを使う
-- Web Serial API を通じた処理は `app/shared/module/serialInterface.ts` の `SerialCommunicator` を使用する（旧ロジック準拠: ガルバ座標は送信前に中心シフト＋wrap を適用）
+- Web Serial API を通じた処理は `app/shared/module/serialInterface.ts` の `SerialCommunicator` を使用する（ガルバ座標は `B{x},{y}` の生値送信。ページ8/9の高レート再生では `setGalvoPosLatest` で最新座標のみ coalesce 送信し、停止時は `emergencyLaserOff` で保留座標を破棄して `A0` を優先送信する）
 - 各機能は適度に分割されて実装されること。TypeScript 側、C++側ともにステートレスな実装を行う。状態を持つ class は基本使用してはならず、SQLite 中心の状態管理を心がける。ただし、値オブジェクトとして振る舞うイミュータブルな class は積極的に使用して良い。
 
 ## UI 言語・ナビゲーション方針（2026-02-20 追記）
@@ -179,6 +179,7 @@
 - OPFS への Blob 書き込みは `new Uint8Array(bytes)` で `ArrayBuffer` バックの view を明示的に作成してから書き込みます（新しい TypeScript DOM 型との整合）。
 - RGBA リサンプル時の `ImageData` 生成は入力配列を `Uint8ClampedArray` にコピーしてから行います（`ArrayBufferLike` 由来の型不一致回避）。
 - WebGL remap 系の identity fallback は、`renderer`/`video` 参照をローカル変数へ固定して null 安全に実行します。
+- `any` は使用しません（2026-03-12 更新）。OPFS 判定と例外処理は `unknown` + 型ガードで扱い、SQLite から復元する `type` は `parseFileType()` で `FileType` に正規化します。
 
 ## Stream Abstraction（2026-02-27 追記）
 
@@ -221,11 +222,38 @@
   - `fragments: scan-figure[]`
   - `scan-figure`: `{ type: "scan-figure", t: sec, duration: sec, figurePath: string, mode?: "outline", rateHz?: number, laserPct?: number }`
 - 実行: `@kzkymur/sequencer` の `IndependentSequencer`（tick は `Rate(Hz)` スライダで `pitch=1000/rateHz`。既定200Hz）。
+- ループ再生: `Rate(Hz)` の右隣に `loop` チェックボックスを配置。`Start` 押下時に ON なら `setLoopFlag(true)` でループ再生し、停止は `Stop` ボタンで行う。
+- タイムライン表示の既定サイズは `720x50`（CSS px）。
 - `Add` ボタン押下時は JSON 追記だけでなく Sequencer インスタンスも即時再構築し、Timeline キャンバスに追加フラグメントを直ちに反映する。
 - レーザー: `laserPct` 指定時は開始時に即変更。終了時の復帰なし。シーケンス全体終了/Stopで `A0`。
+  - 2026-03-13: 高レートでの送信詰まり対策として、再生中の `B{x,y}` は最新値のみを coalesce 送信。終了時は保留 `B` を破棄して `A0` を優先送信。
 - プレビュー: Live undist + H（galvo→camera）重畳で照射点をリアルタイム描画。
 - シーケンスに含まれる `scan-figure` ポリゴンをページ7同様に重畳表示し、再生中の該当フラグメントをハイライト表示する。
 - UI状態同期: 再生中は `Start` disabled / `Stop` enabled。自然終了または Stop で `Start` enabled / `Stop` disabled に戻す。
+
+## Page 9 – Laser Thermo Measurement（2026-03-12 追加）
+
+- 目的: ページ8のシーケンス自動照射と同時に、サーモカメラ（WebSocket Y16）で温度時系列を取得する。
+- パス: `/9-measure-thermo`
+- レイアウト: ページ8をベースにしつつ、`Add Fragment` UI は廃止し、選択UIを追加する。
+  - 必須選択: Web Camera / Galvo Homography / Serial Device / Sequence File / Thermal Camera / Web↔Thermal Homography
+  - Sequence File はページ8等で保存した `FileEntry.type === "sequence"` を利用。
+  - Thermal Camera は既存の WebSocket Y16 ソース（`ws://` / `wss://`）を利用。
+- プレビュー: Web カメラとサーモカメラを横並び表示し、照射点・フラグメント・温度観測点を両方へ同時に重畳表示する。
+- 温度観測点:
+  - `Start` 前に、どちらかのプレビュークリックで設定。
+  - クリック側の座標を基準に Homography で他方へ変換して同時表示する。
+- 実行:
+  - `Start` でシーケンス再生（ガルバ/レーザー）と温度計測を同時開始。
+  - 温度計測は 30Hz。観測点温度と視野内最大温度を記録。
+  - タイムライン下に温度グラフ（2系列）を表示。横軸はタイムライン同期、縦軸は min/max に追従して動的更新。
+- 終了:
+  - `Stop` またはシーケンス自然終了で、ガルバ/レーザー制御と温度計測の両方を停止。
+  - 停止時はページ8同様に `A0`（レーザーOFF）を送信。
+  - 2026-03-13: ページ8と同様、保留 `B` を破棄して `A0` を優先送信し、キュー詰まり時のOFF遅延を抑制。
+  - 計測結果を `/9-measure-thermo/{ts}.csv` に保存（`{ts}` はシーケンス開始時刻）。
+- ループ:
+  - ページ8同様のループ再生をサポート。ループ中は温度計測も継続し、`Stop` で終了・保存する。
 
 ## Camera Y16 Pipeline（2026-02-27 更新）
 

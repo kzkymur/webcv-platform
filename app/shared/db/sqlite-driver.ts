@@ -1,5 +1,5 @@
 import initSqlJs, { Database, SqlJsStatic } from "sql.js";
-import type { FileEntry } from "./types";
+import type { FileEntry, FileType } from "./types";
 import { deleteBlobFromOPFS, readBlobFromOPFS, writeBlobToOPFS } from "@/shared/db/opfs-blob";
 
 let SQLP: Promise<SqlJsStatic> | null = null;
@@ -7,8 +7,44 @@ let db: Database | null = null;
 
 // Simple change notification (same-tab + cross-tab)
 type FileChangeOp = "put" | "delete" | "batch";
+type StorageManagerWithDirectory = StorageManager & {
+  getDirectory: () => Promise<FileSystemDirectoryHandle>;
+};
+type ErrorLike = { name?: unknown; code?: unknown };
+const FILE_TYPE_SET: ReadonlySet<string> = new Set([
+  "rgb-image",
+  "grayscale-image",
+  "optical-flow",
+  "remap",
+  "remapXY",
+  "homography-json",
+  "undist-json",
+  "figure",
+  "sequence",
+  "other",
+]);
+
+function getStorageWithDirectory(): StorageManagerWithDirectory {
+  const storage = navigator.storage as StorageManagerWithDirectory | undefined;
+  if (!storage || typeof storage.getDirectory !== "function") {
+    throw new Error("OPFS is not available in this environment.");
+  }
+  return storage;
+}
+
+function isNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as ErrorLike;
+  return e.name === "NotFoundError" || e.code === 8;
+}
+
+function parseFileType(value: unknown): FileType {
+  if (typeof value === "string" && FILE_TYPE_SET.has(value)) return value as FileType;
+  return "other";
+}
+
 const bc: BroadcastChannel | null =
-  typeof window !== "undefined" && (window as any).BroadcastChannel
+  typeof window !== "undefined" && typeof BroadcastChannel !== "undefined"
     ? new BroadcastChannel("gw-files")
     : null;
 function notify(op: FileChangeOp, paths: string[]) {
@@ -26,8 +62,7 @@ const OPFS_FILE = "files.sqlite";
 
 async function getOpfsRoot(): Promise<FileSystemDirectoryHandle> {
   // `navigator.storage.getDirectory()` is the OPFS entry point
-  const root: FileSystemDirectoryHandle = await (navigator as any).storage.getDirectory();
-  return root;
+  return await getStorageWithDirectory().getDirectory();
 }
 
 async function ensureDir(parent: FileSystemDirectoryHandle, name: string): Promise<FileSystemDirectoryHandle> {
@@ -42,9 +77,9 @@ async function getDbFileHandle(create: boolean): Promise<FileSystemFileHandle | 
   try {
     // @ts-ignore
     return await dir.getFileHandle(OPFS_FILE, { create });
-  } catch (e: any) {
-    if (!create && (e?.name === "NotFoundError" || e?.code === 8)) return null;
-    throw e;
+  } catch (error: unknown) {
+    if (!create && isNotFoundError(error)) return null;
+    throw error;
   }
 }
 
@@ -234,7 +269,7 @@ export async function getFile(path: string): Promise<FileEntry | undefined> {
       const buf = await readBlobFromOPFS(path);
       return {
         path: row["path"] as string,
-        type: row["type"] as any,
+        type: parseFileType(row["type"]),
         data: buf || undefined,
         width: (row["width"] as number) ?? undefined,
         height: (row["height"] as number) ?? undefined,
@@ -271,7 +306,7 @@ export async function listFiles(): Promise<FileEntry[]> {
       const row = stmt.getAsObject();
       out.push({
         path: row["path"] as string,
-        type: row["type"] as any,
+        type: parseFileType(row["type"]),
         // data intentionally omitted for listings
         width: (row["width"] as number) ?? undefined,
         height: (row["height"] as number) ?? undefined,

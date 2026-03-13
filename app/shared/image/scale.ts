@@ -41,7 +41,7 @@ export function resampleRgbaToSize(
       const dctx = dst.getContext("2d");
       if (!dctx) throw new Error("2d ctx");
       dctx.imageSmoothingEnabled = true;
-      dctx.imageSmoothingQuality = "high" as any;
+      dctx.imageSmoothingQuality = "high";
       dctx.drawImage(src, 0, 0, outW, outH);
       const out = dctx.getImageData(0, 0, outW, outH).data;
       return { rgba: out, width: outW, height: outH };

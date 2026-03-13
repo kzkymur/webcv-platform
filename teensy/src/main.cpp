@@ -12,11 +12,10 @@ XY2_100* galvo;
 String buffer = "";
 char mode;
 int x, y, vol;
-bool ledState = true;
 
 void setup() {
     pinMode(13, OUTPUT);
-    digitalWrite(13, ledState ? HIGH : LOW);
+    analogWrite(13, LOW);
     Serial.begin(115200);
     Serial.setTimeout(5);
 
@@ -56,14 +55,13 @@ void loop() {
         analogWrite(PWM_OUT_PIN, duty);
 
         // 13ピンのLEDをトグル
-        ledState = !ledState;
-        digitalWrite(13, ledState ? HIGH : LOW);
+        analogWrite(13, duty);
 
         // DAC出力
-        // Wire.beginTransmission(I2C_DAC_ADDR);
-        // Wire.write((duty >> 8) & 0x0F);
-        // Wire.write(duty);
-        // Wire.endTransmission();
+        Wire.beginTransmission(I2C_DAC_ADDR);
+        Wire.write((duty >> 8) & 0x0F);
+        Wire.write(duty);
+        Wire.endTransmission();
 
     }
     if (mode == 'B') {

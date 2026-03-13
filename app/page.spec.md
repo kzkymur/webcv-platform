@@ -7,6 +7,8 @@
     - 6. Cameras Homography — select Camera A/B and a single shared timestamp; displays undistorted previews and computes a homography from that pair. Saves undist frames and JSON under `6-cameras-homography/<runTs>/`.
     - 3. Remap Realtime — lists detected remap fields (per‑camera undistortion) and previews the chosen field; live WebGL application is being integrated.
     - 7. Galvo Figure Management — create and manage closed polygons in galvo space; save as `7-galvo-figure-management/<timestamp>.fig` with FileEntry.type `figure`. Works with live camera or still images; homography is used only for projection on preview.
+    - 8. Laser Automatic Operation — load/save timeline sequences (`FileEntry.type === "sequence"`), run galvo/laser scan fragments, and visualize active fragments with laser point overlays on live preview.
+    - 9. Laser Thermo Measurement — run a saved sequence while sampling thermal data (30Hz) from WebSocket Y16 and save `9-measure-thermo/<ts>.csv` containing point/max temperature in Celsius.
   - Do not render a page-link banner above main content.
   - Sidebars (persistent):
     - Left: File System

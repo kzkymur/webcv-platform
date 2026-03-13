@@ -133,6 +133,21 @@ export default function Page() {
                 </div>
               </div>
             </div>
+            <div className="panel">
+              <div className="col" style={{ gap: 6 }}>
+                <a href="/9-measure-thermo">
+                  <b>9. Laser Thermo Measurement</b>
+                </a>
+                <div style={{ opacity: 0.85, fontSize: 14 }}>
+                  Run a saved sequence while recording thermal temperatures from
+                  a WebSocket Y16 camera. The page shows web and thermal previews
+                  side-by-side, mirrors laser/fragment overlays to both views,
+                  and logs point/max temperature trends synchronized to the
+                  sequence timeline. Results are exported as CSV under
+                  <code>9-measure-thermo/&lt;ts&gt;.csv</code>.
+                </div>
+              </div>
+            </div>
           </section>
           {activeFile && (
             <section>

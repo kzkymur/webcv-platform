@@ -4,9 +4,20 @@
 const OPFS_DIR = "galvoweb";
 const DATA_SUBDIR = "data";
 
+type StorageManagerWithDirectory = StorageManager & {
+  getDirectory: () => Promise<FileSystemDirectoryHandle>;
+};
+
+function getStorageWithDirectory(): StorageManagerWithDirectory {
+  const storage = navigator.storage as StorageManagerWithDirectory | undefined;
+  if (!storage || typeof storage.getDirectory !== "function") {
+    throw new Error("OPFS is not available in this environment.");
+  }
+  return storage;
+}
+
 async function getOpfsRoot(): Promise<FileSystemDirectoryHandle> {
-  const root: FileSystemDirectoryHandle = await (navigator as any).storage.getDirectory();
-  return root;
+  return await getStorageWithDirectory().getDirectory();
 }
 
 async function ensureDir(parent: FileSystemDirectoryHandle, name: string): Promise<FileSystemDirectoryHandle> {
@@ -59,7 +70,7 @@ export async function readBlobFromOPFS(path: string): Promise<ArrayBuffer | null
     const fh: FileSystemFileHandle = await parent.getFileHandle(name, { create: false });
     const file = await fh.getFile();
     return await file.arrayBuffer();
-  } catch (e: any) {
+  } catch (_error: unknown) {
     // NotFoundError etc.
     return null;
   }

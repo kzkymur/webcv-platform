@@ -13,7 +13,9 @@
 - FileType に `sequence` を追加（`listFiles()` で列挙しやすくする）。
 - シーケンサは `@kzkymur/sequencer` を使用（独立タイムライン: `IndependentSequencer`）。
   - レート設定: UI の `Rate(Hz)` スライダは `setPitch(1000/rateHz)` に反映（既定 200Hz）。
+  - ループ設定: `Rate(Hz)` の右隣に `loop` チェックボックスを配置。`Start` 押下時にチェックが有効なら `setLoopFlag(true)` で再生し、`Stop` 押下で停止する。
   - タイムライン描画: `renderToCanvas` に渡す `width/height` は固定値ではなく、Canvas の表示サイズ（`getBoundingClientRect()`）に同期する。Canvas バッファは `devicePixelRatio` を反映して再設定し、表示サイズと描画計算幅の不一致を防ぐ。
+  - タイムライン表示の既定サイズは `720x50`（CSS px）。
   - `Add` 押下時は JSON 追記に加えて Sequencer を即時再構築し、タイムライン可視化へ追加フラグメントをその場で反映する。
 - フラグメント（JSON 仕様 v1）:
   - `scan-figure`: `{ type, t(sec), duration(sec), figurePath, mode?: 'outline' | 'raster' | 'grid-raster-inward', cycleSec?: number, rateHz?: number, laserPct?: number }`
@@ -28,4 +30,6 @@
   - シーケンスに含まれる各 `scan-figure` のポリゴンをページ7と同様に重畳表示する。
   - 再生中は現在時刻に該当するフラグメントのみハイライトし、照射点ドットも同時描画する。
 - 安全: Start/Stop はユーザ操作。Stop と自然終了のいずれでも `A0` を送信。
+  - 2026-03-12 更新: Stop/自然終了の終了処理は二重実行ガード付きで `A0` 送信完了を待機し、シーケンス終了時にレーザー出力 0% を確実化。
+  - 2026-03-13 更新: 高レート時のシリアル詰まり対策として、再生中の `B{x,y}` は最新値のみ送信（coalesce）。停止時は未送信 `B` を破棄して `A0` を優先送信する。
 - UI状態同期: 再生中は `Start` を無効化し `Stop` を有効化する。シーケンス自然終了時および `Stop` 実行時は自動で `Start` 有効 / `Stop` 無効に戻す。

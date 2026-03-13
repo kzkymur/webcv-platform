@@ -1,9 +1,3 @@
-import {
-  crampGalvoCoordinate,
-  GALVO_MAX_X,
-  GALVO_MAX_Y,
-} from "@/shared/util/calcHomography";
-
 // TeencyCommunicator was removed; SerialCommunicator below is the single source.
 
 // Web Serial adapter that exposes the legacy-friendly API used across pages.
@@ -13,6 +7,11 @@ export class SerialCommunicator {
   private port: SerialPort | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private encoder = new TextEncoder();
+  private writeChain: Promise<void> = Promise.resolve();
+  private writeEpoch = 0;
+  private pendingRealtimeGalvoLine: string | null = null;
+  private realtimeGalvoPumpRunning = false;
+  private realtimeGalvoEnabled = true;
 
   async connect(): Promise<boolean> {
     try {
@@ -22,7 +21,12 @@ export class SerialCommunicator {
       this.writer = (
         this.port.writable as WritableStream<Uint8Array>
       ).getWriter();
-      await this.writer.write(this.encoder.encode("HELLO\n"));
+      this.writeChain = Promise.resolve();
+      this.writeEpoch = 0;
+      this.pendingRealtimeGalvoLine = null;
+      this.realtimeGalvoPumpRunning = false;
+      this.realtimeGalvoEnabled = true;
+      await this.enqueueWrite("HELLO");
       return true;
     } catch (e) {
       console.warn("Serial connect error", e);
@@ -33,6 +37,11 @@ export class SerialCommunicator {
   }
 
   async disconnect() {
+    this.disableRealtimeGalvo();
+    this.writeEpoch += 1;
+    try {
+      await this.writeChain.catch(() => {});
+    } catch {}
     try {
       await this.writer?.close();
     } catch {}
@@ -41,32 +50,72 @@ export class SerialCommunicator {
     } catch {}
     this.writer = null;
     this.port = null;
+    this.writeChain = Promise.resolve();
+    this.writeEpoch = 0;
   }
 
-  private async send(line: string) {
-    if (!this.writer) throw new Error("Serial not connected");
-    await this.writer.write(this.encoder.encode(line + "\n"));
+  private enqueueWrite(line: string, epoch: number = this.writeEpoch): Promise<void> {
+    const op = this.writeChain.then(async () => {
+      if (epoch !== this.writeEpoch) return;
+      if (!this.writer) throw new Error("Serial not connected");
+      await this.writer.write(this.encoder.encode(line + "\n"));
+    });
+    this.writeChain = op.catch(() => {});
+    return op;
+  }
+
+  private formatGalvoLine(x: number, y: number): string {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    return `B${xi},${yi}`;
+  }
+
+  private async drainRealtimeGalvo(): Promise<void> {
+    try {
+      while (this.realtimeGalvoEnabled && this.pendingRealtimeGalvoLine) {
+        const line = this.pendingRealtimeGalvoLine;
+        this.pendingRealtimeGalvoLine = null;
+        await this.enqueueWrite(line);
+      }
+    } finally {
+      this.realtimeGalvoPumpRunning = false;
+      if (this.realtimeGalvoEnabled && this.pendingRealtimeGalvoLine) {
+        this.realtimeGalvoPumpRunning = true;
+        void this.drainRealtimeGalvo();
+      }
+    }
+  }
+
+  enableRealtimeGalvo() {
+    this.realtimeGalvoEnabled = true;
+  }
+
+  disableRealtimeGalvo() {
+    this.realtimeGalvoEnabled = false;
+    this.pendingRealtimeGalvoLine = null;
+  }
+
+  setGalvoPosLatest(x: number, y: number) {
+    if (!this.realtimeGalvoEnabled) return;
+    this.pendingRealtimeGalvoLine = this.formatGalvoLine(x, y);
+    if (this.realtimeGalvoPumpRunning) return;
+    this.realtimeGalvoPumpRunning = true;
+    void this.drainRealtimeGalvo();
   }
 
   async setLaserOutput(percent: number) {
     const p = Math.max(0, Math.min(100, Math.floor(percent)));
-    await this.send(`A${p}`);
+    await this.enqueueWrite(`A${p}`);
+  }
+
+  async emergencyLaserOff() {
+    this.disableRealtimeGalvo();
+    const epoch = ++this.writeEpoch;
+    await this.enqueueWrite("A0", epoch);
   }
 
   async setGalvoPos(x: number, y: number) {
-    // Apply legacy center-shift + wrap, then clamp (old behavior)
-    // const clamped = crampGalvoCoordinate({ x, y });
-    // const sx = (clamped.x + GALVO_MAX_X / 2 + 1) % (GALVO_MAX_X + 1);
-    // const sy = (clamped.y + GALVO_MAX_Y / 2 + 1) % (GALVO_MAX_Y + 1);
-    // await this.send(`B${Math.floor(sx)},${Math.floor(sy)}`);
-
-    // Newer/raw implementation (no center shift, direct send):
-    // Source: removed app/shared/hardware/serial.ts
-    // Uncomment to use raw XY (ensure downstream expects this convention)
-    const xi = Math.floor(x);
-    const yi = Math.floor(y);
-    console.log(`B${xi},${yi}`);
-    await this.send(`B${xi},${yi}`);
+    await this.enqueueWrite(this.formatGalvoLine(x, y));
   }
 }
 
