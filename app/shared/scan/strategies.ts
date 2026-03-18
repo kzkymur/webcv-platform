@@ -16,6 +16,7 @@ export interface ScanStrategy {
 const DEFAULT_RASTER_ROWS = 48;
 const GRID_DIV = 3;
 const GRID_CENTER_IN_ORDER = [1, 9, 2, 8, 3, 7, 4, 6, 5] as const;
+const DEFAULT_INWARD_OUTLINE_LOOPS = 8;
 
 // Helper: perimeter and cumulative lengths for a closed polygon
 function buildPerimeter(points: number[]): { total: number; cum: number[]; verts: XY[] } {
@@ -30,6 +31,33 @@ function buildPerimeter(points: number[]): { total: number; cum: number[]; verts
     cum.push(total);
   }
   return { total, cum, verts };
+}
+
+function normalizeLoopPhase(tSec: number, durationSec: number): number {
+  if (durationSec <= 0) return 0;
+  const m = tSec % durationSec;
+  const wrapped = m < 0 ? m + durationSec : m;
+  return Math.max(0, Math.min(1, wrapped / durationSec));
+}
+
+function samplePerimeterAtProgress(
+  perimeter: { total: number; cum: number[]; verts: XY[] },
+  progress: number,
+): XY | null {
+  const { total, cum, verts } = perimeter;
+  if (verts.length === 0 || total <= 0) return null;
+
+  const wrapped = progress - Math.floor(progress);
+  const p = Math.max(0, Math.min(1, wrapped));
+  const d = p * total;
+  let seg = 0;
+  while (seg + 1 < cum.length && cum[seg + 1] < d) seg++;
+  const a = verts[seg % verts.length];
+  const b = verts[(seg + 1) % verts.length];
+  const segLen = Math.max(1e-6, Math.hypot(b.x - a.x, b.y - a.y));
+  const segStart = cum[seg];
+  const u = Math.max(0, Math.min(1, (d - segStart) / segLen));
+  return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
 }
 
 function buildPolyline(points: XY[]): { total: number; cum: number[] } {
@@ -124,6 +152,53 @@ function samplePathPosition(path: XY[], tSec: number, durationSec: number): XY |
   const segStart = cum[seg];
   const u = Math.max(0, Math.min(1, (d - segStart) / segLen));
   return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+}
+
+function buildOutlineInwardPath(points: number[], loops = DEFAULT_INWARD_OUTLINE_LOOPS): XY[] {
+  const verts: XY[] = [];
+  for (let i = 0; i + 1 < points.length; i += 2) verts.push({ x: points[i], y: points[i + 1] });
+  if (verts.length < 3) return [];
+
+  const n = verts.length;
+  let cx = 0;
+  let cy = 0;
+  for (const v of verts) {
+    cx += v.x;
+    cy += v.y;
+  }
+  cx /= n;
+  cy /= n;
+
+  const loopCount = Math.max(1, Math.floor(loops));
+  const path: XY[] = [];
+  for (let loop = 0; loop < loopCount; loop++) {
+    const scale = Math.max(0, (loopCount - loop) / loopCount);
+    const ring: XY[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const v = verts[i];
+      ring[i] = { x: cx + (v.x - cx) * scale, y: cy + (v.y - cy) * scale };
+    }
+    if (ring.length < 2) continue;
+    if (path.length > 0) path.push(ring[0]);
+    path.push(...ring);
+    path.push(ring[0]); // one closed outline per inward loop
+  }
+
+  path.push({ x: cx, y: cy });
+  return dedupePath(path);
+}
+
+function sampleDualPhasePath(path: XY[], tSec: number, durationSec: number): XY | null {
+  if (durationSec <= 0 || path.length < 2) return null;
+  const phase = normalizeLoopPhase(tSec, durationSec);
+  const lead = samplePathPosition(path, phase, 1);
+  const opposite = samplePathPosition(path, phase + 0.5, 1);
+  if (!lead) return opposite;
+  if (!opposite) return lead;
+
+  const switchSlots = Math.max(2, path.length * 16);
+  const lane = Math.floor(phase * switchSlots) % 2;
+  return lane === 0 ? lead : opposite;
 }
 
 function buildRasterPath(points: number[], rows = DEFAULT_RASTER_ROWS): XY[] {
@@ -247,21 +322,67 @@ export const OutlineStrategy: ScanStrategy = {
   key: 'outline',
   label: 'Outline (loop edges)',
   positionAt(ctx, tSec, durationSec) {
-    const { pointsGalvo } = ctx;
-    const { total, cum, verts } = buildPerimeter(pointsGalvo);
-    if (verts.length === 0 || total <= 0 || durationSec <= 0) return null;
-    // progress 0..1 within the loop
-    const p = Math.max(0, Math.min(1, (tSec % durationSec) / durationSec));
-    let d = p * total;
-    // find segment
-    let seg = 0;
-    while (seg + 1 < cum.length && cum[seg + 1] < d) seg++;
-    const a = verts[seg % verts.length];
-    const b = verts[(seg + 1) % verts.length];
-    const segLen = Math.max(1e-6, Math.hypot(b.x - a.x, b.y - a.y));
-    const segStart = cum[seg];
-    const u = Math.max(0, Math.min(1, (d - segStart) / segLen));
-    return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+    if (durationSec <= 0) return null;
+    const perimeter = buildPerimeter(ctx.pointsGalvo);
+    const phase = normalizeLoopPhase(tSec, durationSec);
+    return samplePerimeterAtProgress(perimeter, phase);
+  },
+};
+
+export const RasterLoopEdgesStrategy: ScanStrategy = {
+  key: 'raster-loop-edges',
+  label: 'Raster (loop edges)',
+  positionAt(ctx, tSec, durationSec) {
+    if (durationSec <= 0) return null;
+    const perimeter = buildPerimeter(ctx.pointsGalvo);
+    if (perimeter.verts.length === 0 || perimeter.total <= 0) return null;
+
+    const phase = normalizeLoopPhase(tSec, durationSec);
+    const lead = samplePerimeterAtProgress(perimeter, phase);
+    const opposite = samplePerimeterAtProgress(perimeter, phase + 0.5);
+    if (!lead) return opposite;
+    if (!opposite) return lead;
+
+    // Interleave two opposite-phase loops to emulate dual-start edge scanning.
+    const switchSlots = Math.max(2, perimeter.verts.length * 64);
+    const lane = Math.floor(phase * switchSlots) % 2;
+    return lane === 0 ? lead : opposite;
+  },
+};
+
+export const OutlineInward8Strategy: ScanStrategy = {
+  key: 'outline-inward-8',
+  label: 'Outline (inward x8)',
+  positionAt(ctx, tSec, durationSec) {
+    const path = buildOutlineInwardPath(ctx.pointsGalvo, 8);
+    return samplePathPosition(path, tSec, durationSec);
+  },
+};
+
+export const RasterLoopEdgesInward8Strategy: ScanStrategy = {
+  key: 'raster-loop-edges-inward-8',
+  label: 'Raster (loop edges inward x8)',
+  positionAt(ctx, tSec, durationSec) {
+    const path = buildOutlineInwardPath(ctx.pointsGalvo, 8);
+    return sampleDualPhasePath(path, tSec, durationSec);
+  },
+};
+
+export const OutlineInward4Strategy: ScanStrategy = {
+  key: 'outline-inward-4',
+  label: 'Outline (inward x4)',
+  positionAt(ctx, tSec, durationSec) {
+    const path = buildOutlineInwardPath(ctx.pointsGalvo, 4);
+    return samplePathPosition(path, tSec, durationSec);
+  },
+};
+
+export const RasterLoopEdgesInward4Strategy: ScanStrategy = {
+  key: 'raster-loop-edges-inward-4',
+  label: 'Raster (loop edges inward x4)',
+  positionAt(ctx, tSec, durationSec) {
+    const path = buildOutlineInwardPath(ctx.pointsGalvo, 4);
+    return sampleDualPhasePath(path, tSec, durationSec);
   },
 };
 
@@ -284,4 +405,13 @@ export const GridRasterInwardStrategy: ScanStrategy = {
 };
 
 // Strategy registry for easy extension
-export const ScanStrategies: ScanStrategy[] = [OutlineStrategy, RasterStrategy, GridRasterInwardStrategy];
+export const ScanStrategies: ScanStrategy[] = [
+  OutlineStrategy,
+  RasterLoopEdgesStrategy,
+  OutlineInward8Strategy,
+  RasterLoopEdgesInward8Strategy,
+  OutlineInward4Strategy,
+  RasterLoopEdgesInward4Strategy,
+  RasterStrategy,
+  GridRasterInwardStrategy,
+];

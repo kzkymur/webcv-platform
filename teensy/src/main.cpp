@@ -8,10 +8,45 @@
 
 //! ガルバノスキャナ
 XY2_100* galvo;
-
-String buffer = "";
-char mode;
 int x, y, vol;
+
+void processCommand(const String& line) {
+    if (line.length() == 0) return;
+    const char mode = line.charAt(0);
+    const String payload = line.substring(1);
+
+    if (mode == 'A') {
+        // レーザー制御関連
+        vol = payload.toInt();
+        float val = (float)vol / 100.0;
+        val *= 4005.0;
+        uint16_t duty = static_cast<uint16_t>(val);
+
+        // PWM出力
+        analogWrite(PWM_OUT_PIN, duty);
+
+        // 13ピンのLEDをトグル
+        analogWrite(13, duty);
+
+        // DAC出力
+        Wire.beginTransmission(I2C_DAC_ADDR);
+        Wire.write((duty >> 8) & 0x0F);
+        Wire.write(duty);
+        Wire.endTransmission();
+        return;
+    }
+
+    if (mode == 'B') {
+        // ガルバノスキャナ制御
+        digitalWrite(GALVO_ENABLE_PIN, 1);
+        const int commaIndex = payload.indexOf(',');
+        if (commaIndex > 0) {
+            x = payload.substring(0, commaIndex).toInt();
+            y = payload.substring(commaIndex + 1).toInt();
+            galvo->setXY(x, y);
+        }
+    }
+}
 
 void setup() {
     pinMode(13, OUTPUT);
@@ -38,40 +73,8 @@ void setup() {
 }
 
 void loop() {
-    if (Serial.available()) {
-        buffer = Serial.readString();
-        mode = buffer.charAt(0);
-        buffer = buffer.substring(1);
-    }
-
-    if (mode == 'A') {
-        // レーザー制御関連
-        vol = buffer.toInt();
-        float val = (float)vol / 100.0;
-        val *= 4005.0;
-        uint16_t duty = static_cast<uint16_t>(val);
-
-        // PWM出力
-        analogWrite(PWM_OUT_PIN, duty);
-
-        // 13ピンのLEDをトグル
-        analogWrite(13, duty);
-
-        // DAC出力
-        Wire.beginTransmission(I2C_DAC_ADDR);
-        Wire.write((duty >> 8) & 0x0F);
-        Wire.write(duty);
-        Wire.endTransmission();
-
-    }
-    if (mode == 'B') {
-        // ガルバノスキャナ制御
-        digitalWrite(GALVO_ENABLE_PIN, 1);
-        int commaIndex = buffer.indexOf(',');
-        if (commaIndex > 0) {
-            x = buffer.substring(0, commaIndex).toInt();
-            y = buffer.substring(commaIndex + 1).toInt();
-        }
-        galvo->setXY(x, y);
+    while (Serial.available()) {
+        const String line = Serial.readStringUntil('\n');
+        processCommand(line);
     }
 }

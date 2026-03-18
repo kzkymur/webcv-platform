@@ -10,7 +10,7 @@
   - Web Camera
   - Galvo Homography（galvo→web camera）
   - Serial Device（Web Serial）
-  - Sequence File（`FileEntry.type === "sequence"`。ページ8等で作成した `.seq`）
+  - Sequence File（`FileEntry.type === "sequence"`。ページ8等で作成した `.seq`。`mode` は `outline` / `raster-loop-edges` / `outline-inward-8` / `raster-loop-edges-inward-8` / `outline-inward-4` / `raster-loop-edges-inward-4` / `raster` / `grid-raster-inward` を受理）
   - Thermal Camera（WebSocket Y16: `ws://` / `wss://`）
   - Web↔Thermal Homography（web camera と thermal camera の対応）
 - シーケンスタイムラインはページ8同様に表示する（既定 `720x50` CSS px）。
@@ -73,3 +73,4 @@ elapsedMs,elapsedSec,pointTempC,maxTempC
 - ページ8と同様に loop に対応する。
 - loop 有効時は、`Stop` が押されるまでシーケンス再生と温度計測を継続する。
 - loop 中の CSV は単一ファイルに連続追記し、`Stop` 時点で保存する。
+- 2026-03-13 更新: page8 と同じく、loop 周回ごとに各フラグメントの `laserPct` を再適用する。

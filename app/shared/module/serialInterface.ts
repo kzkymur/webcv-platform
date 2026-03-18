@@ -8,7 +8,6 @@ export class SerialCommunicator {
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private encoder = new TextEncoder();
   private writeChain: Promise<void> = Promise.resolve();
-  private writeEpoch = 0;
   private pendingRealtimeGalvoLine: string | null = null;
   private realtimeGalvoPumpRunning = false;
   private realtimeGalvoEnabled = true;
@@ -22,7 +21,6 @@ export class SerialCommunicator {
         this.port.writable as WritableStream<Uint8Array>
       ).getWriter();
       this.writeChain = Promise.resolve();
-      this.writeEpoch = 0;
       this.pendingRealtimeGalvoLine = null;
       this.realtimeGalvoPumpRunning = false;
       this.realtimeGalvoEnabled = true;
@@ -38,7 +36,6 @@ export class SerialCommunicator {
 
   async disconnect() {
     this.disableRealtimeGalvo();
-    this.writeEpoch += 1;
     try {
       await this.writeChain.catch(() => {});
     } catch {}
@@ -51,12 +48,10 @@ export class SerialCommunicator {
     this.writer = null;
     this.port = null;
     this.writeChain = Promise.resolve();
-    this.writeEpoch = 0;
   }
 
-  private enqueueWrite(line: string, epoch: number = this.writeEpoch): Promise<void> {
+  private enqueueWrite(line: string): Promise<void> {
     const op = this.writeChain.then(async () => {
-      if (epoch !== this.writeEpoch) return;
       if (!this.writer) throw new Error("Serial not connected");
       await this.writer.write(this.encoder.encode(line + "\n"));
     });
@@ -110,8 +105,8 @@ export class SerialCommunicator {
 
   async emergencyLaserOff() {
     this.disableRealtimeGalvo();
-    const epoch = ++this.writeEpoch;
-    await this.enqueueWrite("A0", epoch);
+    await this.writeChain.catch(() => {});
+    await this.setLaserOutput(0);
   }
 
   async setGalvoPos(x: number, y: number) {

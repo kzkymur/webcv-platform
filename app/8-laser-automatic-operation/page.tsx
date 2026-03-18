@@ -14,6 +14,7 @@ import {
   OutlineStrategy,
   type ScanStrategy,
 } from "@/shared/scan/strategies";
+import { createLoopAwareLaserSetter } from "@/shared/scan/laserLoop";
 import { SerialCommunicator } from "@/shared/module/serialInterface";
 import { RemapRenderer } from "@/shared/gl/remap";
 import { listMergedVideoInputs } from "@/shared/util/devices";
@@ -42,7 +43,7 @@ type SequenceV1 = {
     t: number; // sec from 0
     duration: number; // sec
     figurePath: string;
-    mode?: string; // 'outline' | 'raster' | 'grid-raster-inward'
+    mode?: string; // 'outline' | 'raster-loop-edges' | 'outline-inward-8' | 'raster-loop-edges-inward-8' | 'outline-inward-4' | 'raster-loop-edges-inward-4' | 'raster' | 'grid-raster-inward'
     cycleSec?: number; // mode cycle period in sec (default: 1)
     rateHz?: number;
     laserPct?: number; // optional laser output during scan
@@ -527,13 +528,20 @@ export default function Page() {
         const strat: ScanStrategy =
           ScanStrategies.find((s) => s.key === modeKey) || strategy;
         const laserPct = fr.laserPct;
-        let didSetLaser = false;
+        const setLaserForCurrentPass = createLoopAwareLaserSetter(
+          laserPct,
+          (pct) => {
+            if (!serial) throw new Error("Serial is not connected");
+            serial.setLaserOutput(pct);
+          }
+        );
         const frag = new IndependentFragment(
           "scan-figure",
           durationMs,
           startMs,
           (tMs?: number) => {
-            const localSec = Math.max(0, ((tMs || 0) - startMs) / 1000);
+            const currentMs = Math.max(0, tMs ?? 0);
+            const localSec = Math.max(0, (currentMs - startMs) / 1000);
             const p = strat.positionAt(
               { pointsGalvo: arr },
               localSec,
@@ -541,15 +549,11 @@ export default function Page() {
             );
             if (!p) return;
             ctrlRef.current?.setDotGalvo(p);
-            if (serialOk) {
-              if (!didSetLaser && typeof laserPct === "number") {
-                try {
-                  serial?.setLaserOutput(laserPct);
-                  didSetLaser = true;
-                } catch {}
-              }
+            const serialNow = serial;
+            if (serialOk && serialNow) {
+              setLaserForCurrentPass(currentMs);
               try {
-                serial?.setGalvoPosLatest(p.x, p.y);
+                serialNow.setGalvoPosLatest(p.x, p.y);
               } catch {}
             }
           }

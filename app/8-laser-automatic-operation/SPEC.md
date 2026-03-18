@@ -7,7 +7,7 @@
   - シーケンスの情報もファイルシステムに同期的に保存されるようにする。テキストエリアと保存ボタンから成る UI で構成され、ファイル名を入力後、保存ボタンでファイルシステムに保存される。ファイル名は「8-laser-automatic-operation/日時.seq」
 - ファイルシステムにあるシーケンスをロードする機能も併せて追加する。
 
-## 実装メモ（2026-03-11 更新）
+## 実装メモ（2026-03-13 更新）
 
 - 保存先はページ番号に合わせて `8-laser-automatic-operation/<YYYY-MM-DD_HH-mm-ss>.seq`。
 - FileType に `sequence` を追加（`listFiles()` で列挙しやすくする）。
@@ -18,13 +18,19 @@
   - タイムライン表示の既定サイズは `720x50`（CSS px）。
   - `Add` 押下時は JSON 追記に加えて Sequencer を即時再構築し、タイムライン可視化へ追加フラグメントをその場で反映する。
 - フラグメント（JSON 仕様 v1）:
-  - `scan-figure`: `{ type, t(sec), duration(sec), figurePath, mode?: 'outline' | 'raster' | 'grid-raster-inward', cycleSec?: number, rateHz?: number, laserPct?: number }`
+  - `scan-figure`: `{ type, t(sec), duration(sec), figurePath, mode?: 'outline' | 'raster-loop-edges' | 'outline-inward-8' | 'raster-loop-edges-inward-8' | 'outline-inward-4' | 'raster-loop-edges-inward-4' | 'raster' | 'grid-raster-inward', cycleSec?: number, rateHz?: number, laserPct?: number }`
     - 走査戦略は `ScanStrategy` インタフェースに準拠（`app/shared/scan/strategies.ts`）。
     - `cycleSec` は mode 挙動の1周期秒数（既定 1.0s）。`duration` の間、この周期で同じ挙動をループする。
     - `outline`: ポリゴン輪郭をループして走査。
+    - `raster-loop-edges`（UI 表示: `Raster (loop edges)`）: `outline` を2始点で重ねた走査。始点と時間位相 180°（0.5周期）反対の位置をもう1つの始点として持ち、2つを時間スロットで交互に出力する。2始点とも `cycleSec` で1周する。
+    - `outline-inward-8`（UI 表示: `Outline (inward x8)`）: 輪郭を保ったまま中心へ向かって 8 回分の輪郭ループを作り、最後に中心へ到達する。経路長ベースで等速サンプリングするため打点密度はほぼ一定で、中心付近は経路長に応じた回数だけ照射される。
+    - `raster-loop-edges-inward-8`（UI 表示: `Raster (loop edges inward x8)`）: `outline-inward-8` を2始点（位相 180°）で重ね、2系列を時間スロットで交互に出力する。
+    - `outline-inward-4`（UI 表示: `Outline (inward x4)`）: `outline-inward-8` と同じ挙動で、内側ループ数のみ 4 にした版。
+    - `raster-loop-edges-inward-4`（UI 表示: `Raster (loop edges inward x4)`）: `outline-inward-4` を2始点（位相 180°）で重ね、2系列を時間スロットで交互に出力する。
     - `raster`: ポリゴン走査線交点から生成したジグザグ経路（boustrophedon）で面内を走査。
     - `grid-raster-inward`: 図形の外接矩形を 3x3 グリッドへ分割し、各セルにクリップした領域をセル内ラスタ走査。セル順はインデックス `1,9,2,8,3,7,4,6,5`（中心へ向かう順）。
     - `laserPct` 指定時は開始時に即変更。終了しても元へは戻さない。シーケンス全体終了時のみ `A0`。
+      - 2026-03-13 更新: loop 有効時は各フラグメントの周回開始ごとに `laserPct` を再適用する（1周目での最終値が次周へ固定されないようにする）。
   - `set-laser` フラグメントは廃止。
 - プレビュー: Live undist + オーバーレイ描画を行う。ガルバ→カメラはページ4の H を選択して適用。
   - シーケンスに含まれる各 `scan-figure` のポリゴンをページ7と同様に重畳表示する。

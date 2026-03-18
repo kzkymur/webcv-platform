@@ -213,20 +213,26 @@
 - 入力: `ws://...` または `wss://...`。`Add` で `wsCameras: string[]` に保存し、全ページのカメラ選択セレクトに `(WS) <url>` として出現。
 - 複数追加可能。各エントリに `Remove` ボタン。
 
-## Page 8 – Laser Automatic Operation（2026-03-11 更新）
+## Page 8 – Laser Automatic Operation（2026-03-13 更新）
 
 - 目的: ページ7で作成した図形とレーザー出力をタイムラインで自動制御。
 - 保存形式: `FileEntry.type === "sequence"`、パスは `8-laser-automatic-operation/<ts>.seq`。
 - JSON 仕様 v1:
   - `schemaVersion: 1`
   - `fragments: scan-figure[]`
-  - `scan-figure`: `{ type: "scan-figure", t: sec, duration: sec, figurePath: string, mode?: "outline", rateHz?: number, laserPct?: number }`
+  - `scan-figure`: `{ type: "scan-figure", t: sec, duration: sec, figurePath: string, mode?: "outline" | "raster-loop-edges" | "outline-inward-8" | "raster-loop-edges-inward-8" | "outline-inward-4" | "raster-loop-edges-inward-4" | "raster" | "grid-raster-inward", rateHz?: number, laserPct?: number }`
+  - `mode="raster-loop-edges"`（UI: `Raster (loop edges)`）は、`outline` を2始点（0%/50%位相）で重ね、時間スロットごとに交互出力する走査。
+  - `mode="outline-inward-8"`（UI: `Outline (inward x8)`）は、輪郭を保ちながら中心方向へ 8 ループで収束する走査。
+  - `mode="raster-loop-edges-inward-8"`（UI: `Raster (loop edges inward x8)`）は、`outline-inward-8` の2始点交互版。
+  - `mode="outline-inward-4"`（UI: `Outline (inward x4)`）は、`outline-inward-8` のループ数を 4 にした版。
+  - `mode="raster-loop-edges-inward-4"`（UI: `Raster (loop edges inward x4)`）は、`outline-inward-4` の2始点交互版。
 - 実行: `@kzkymur/sequencer` の `IndependentSequencer`（tick は `Rate(Hz)` スライダで `pitch=1000/rateHz`。既定200Hz）。
 - ループ再生: `Rate(Hz)` の右隣に `loop` チェックボックスを配置。`Start` 押下時に ON なら `setLoopFlag(true)` でループ再生し、停止は `Stop` ボタンで行う。
 - タイムライン表示の既定サイズは `720x50`（CSS px）。
 - `Add` ボタン押下時は JSON 追記だけでなく Sequencer インスタンスも即時再構築し、Timeline キャンバスに追加フラグメントを直ちに反映する。
 - レーザー: `laserPct` 指定時は開始時に即変更。終了時の復帰なし。シーケンス全体終了/Stopで `A0`。
   - 2026-03-13: 高レートでの送信詰まり対策として、再生中の `B{x,y}` は最新値のみを coalesce 送信。終了時は保留 `B` を破棄して `A0` を優先送信。
+  - 2026-03-13: loop 再生時は各フラグメントの周回開始で `laserPct` を再適用し、前周の最終レーザー値が次周へ固定されないようにする。
 - プレビュー: Live undist + H（galvo→camera）重畳で照射点をリアルタイム描画。
 - シーケンスに含まれる `scan-figure` ポリゴンをページ7同様に重畳表示し、再生中の該当フラグメントをハイライト表示する。
 - UI状態同期: 再生中は `Start` disabled / `Stop` enabled。自然終了または Stop で `Start` enabled / `Stop` disabled に戻す。
@@ -254,6 +260,7 @@
   - 計測結果を `/9-measure-thermo/{ts}.csv` に保存（`{ts}` はシーケンス開始時刻）。
 - ループ:
   - ページ8同様のループ再生をサポート。ループ中は温度計測も継続し、`Stop` で終了・保存する。
+  - 2026-03-13: loop 周回ごとに各フラグメントの `laserPct` を再適用する（page8 と同一挙動）。
 
 ## Camera Y16 Pipeline（2026-02-27 更新）
 

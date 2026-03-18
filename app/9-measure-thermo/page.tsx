@@ -9,6 +9,7 @@ import type { FileEntry } from "@/shared/db/types";
 import { formatTimestamp } from "@/shared/util/time";
 import { IndependentSequencer, IndependentFragment } from "@kzkymur/sequencer";
 import { ScanStrategies, OutlineStrategy, type ScanStrategy } from "@/shared/scan/strategies";
+import { createLoopAwareLaserSetter } from "@/shared/scan/laserLoop";
 import { SerialCommunicator } from "@/shared/module/serialInterface";
 import { RemapRenderer } from "@/shared/gl/remap";
 import { listMergedVideoInputs } from "@/shared/util/devices";
@@ -756,10 +757,15 @@ export default function Page() {
       const modeKey = fr.mode || OutlineStrategy.key;
       const strat: ScanStrategy = ScanStrategies.find((s) => s.key === modeKey) || OutlineStrategy;
       const laserPct = fr.laserPct;
-      let didSetLaser = false;
+      const setLaserForCurrentPass = createLoopAwareLaserSetter(laserPct, (pct) => {
+        const serialNow = serialRef.current;
+        if (!serialNow) throw new Error("Serial is not connected");
+        serialNow.setLaserOutput(pct);
+      });
 
       const frag = new IndependentFragment("scan-figure", durationMs, startMs, (tMs?: number) => {
-        const localSec = Math.max(0, ((tMs || 0) - startMs) / 1000);
+        const currentMs = Math.max(0, tMs ?? 0);
+        const localSec = Math.max(0, (currentMs - startMs) / 1000);
         const p = strat.positionAt({ pointsGalvo: arr }, localSec, cycleSec);
         if (!p) return;
 
@@ -769,12 +775,7 @@ export default function Page() {
         const serialNow = serialRef.current;
         if (!serialNow || !serialOkRef.current) return;
 
-        if (!didSetLaser && typeof laserPct === "number") {
-          try {
-            serialNow.setLaserOutput(laserPct);
-          } catch {}
-          didSetLaser = true;
-        }
+        setLaserForCurrentPass(currentMs);
 
         try {
           serialNow.setGalvoPosLatest(p.x, p.y);
