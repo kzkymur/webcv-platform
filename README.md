@@ -19,3 +19,20 @@ cd src-wasm && emcmake cmake && emmake make
 ```sh
 pnpm run dev
 ```
+
+## Static Export
+
+```sh
+pnpm run export
+# static files are generated into dist/
+```
+
+## Deploy to GitHub Pages
+
+1. Push to the `main` branch.
+2. In your repository settings, open `Settings > Pages` and set `Source` to `GitHub Actions`.
+3. The workflow `.github/workflows/deploy-pages.yml` deploys `dist/` automatically.
+
+Published URL:
+
+`https://<github-user>.github.io/<repository-name>/`

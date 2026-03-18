@@ -47,7 +47,9 @@
   - Home: 選択したファイルを 2D Canvas にプレビュー表示（タイプに応じて描画）。
   - その他のページ: プレビューは不要。選択イベントは各ページの機能（例: 入力の切替、参照パスの設定など）に用います。
 - ファイル名の編集は不可で OK ですが、削除機能は実装してください。
-- ファイルシステム操作ボタンは `Delete` と `Export` を提供します。
+- ファイルシステム操作ボタンは `Delete` / `Export` / `Export FS` / `Import FS` を提供します。
+  - `Export FS` はファイルシステム全体（SQLite メタ + OPFS Blob）を 1 つのスナップショット JSON（`*.gwfs.json`）として出力します。
+  - `Import FS` は `*.gwfs.json` を読み込み、現在のファイルシステム全体を置換（replace）します。
   - `Export` は選択中のファイル（複数選択可）をダウンロードします。
   - `rgb-image` / `grayscale-image` は PNG に変換し、保存済みの解像度をそのまま保持して保存します。
   - JSON 系（`*.json` / `homography-json` / `undist-json` / `figure` / `sequence`）は JSON バイナリをそのまま保存します。
@@ -76,6 +78,17 @@
   - メモリ管理には既存の WM 系クラスを使う
 - Web Serial API を通じた処理は `app/shared/module/serialInterface.ts` の `SerialCommunicator` を使用する（ガルバ座標は `B{x},{y}` の生値送信。ページ8/9の高レート再生では `setGalvoPosLatest` で最新座標のみ coalesce 送信し、停止時は `emergencyLaserOff` で保留座標を破棄して `A0` を優先送信する）
 - 各機能は適度に分割されて実装されること。TypeScript 側、C++側ともにステートレスな実装を行う。状態を持つ class は基本使用してはならず、SQLite 中心の状態管理を心がける。ただし、値オブジェクトとして振る舞うイミュータブルな class は積極的に使用して良い。
+
+## Deployment（GitHub Pages, 2026-03-18 追記）
+
+- 公開先は GitHub Pages（project pages）を正式サポートとする。
+- デプロイは GitHub Actions ワークフロー `.github/workflows/deploy-pages.yml` で実行する。
+  - トリガー: `main` への push、または手動実行（`workflow_dispatch`）。
+  - 成果物: `pnpm run export` で生成される `dist/` を Pages artifact としてアップロードし、そのまま配信する。
+- Next.js は `output: "export"` を維持し、GitHub Actions 実行時のみ `basePath` / `assetPrefix` を `/${repository-name}` に自動設定する。
+- ルーティング安定化のため `trailingSlash: true` を使用する。
+- `next/image` は静的配信制約のため `images.unoptimized: true` を使用する。
+- ローカル開発時（Actions 以外）は `basePath` を空にし、これまで通り `http://localhost:8080` で確認できることを要件とする。
 
 ## UI 言語・ナビゲーション方針（2026-02-20 追記）
 

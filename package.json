@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev -p 8080",
     "build": "next build",
-    "export": "next export -o dist",
+    "export": "rm -rf dist && pnpm run build && cp -R out dist",
     "preview": "npx serve dist -l 8080",
     "typecheck": "tsc --noEmit"
   },

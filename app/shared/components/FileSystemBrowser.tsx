@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { deleteFile, deleteMany, getFile, listFiles } from "@/shared/db";
 import { FileEntry } from "@/shared/db/types";
 import { exportFileEntry } from "@/shared/util/fileExport";
+import {
+  createFileSystemSnapshotBlob,
+  importFileSystemSnapshot,
+} from "@/shared/util/fsSnapshot";
+import { formatTimestamp } from "@/shared/util/time";
 import { buildTree, TreeNode } from "@/shared/util/tree";
 import { usePrefs } from "@/shared/store/prefs";
 
@@ -19,10 +24,14 @@ export default function FileSystemBrowser({
   // UI-only: selected folder highlight (not used for delete operations)
   const [selectedDirs, setSelectedDirs] = useState<Set<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null); // last clicked file path (for shift)
-  // viewer only; no import UI
+  // viewer controls
   const [q, setQ] = useState("");
   const [busyDelete, setBusyDelete] = useState(false);
   const [busyExport, setBusyExport] = useState(false);
+  const [busyFsExport, setBusyFsExport] = useState(false);
+  const [busyFsImport, setBusyFsImport] = useState(false);
+  const fsImportInputRef = useRef<HTMLInputElement | null>(null);
+  const busyAny = busyDelete || busyExport || busyFsExport || busyFsImport;
   const tree = useMemo(() => buildTree(files.map((f) => f.path)), [files]);
   const flat = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -120,6 +129,36 @@ export default function FileSystemBrowser({
         <button onClick={() => setFsOpenDirs(new Set())}>Collapse All</button>
         <button onClick={refresh}>Reload</button>
       </div>
+      <input
+        ref={fsImportInputRef}
+        type="file"
+        accept=".gwfs.json,application/json"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const input = e.currentTarget;
+          const picked = input.files?.[0];
+          if (!picked || busyAny) return;
+          void (async () => {
+            setBusyFsImport(true);
+            try {
+              const { imported, deleted } = await importFileSystemSnapshot(picked, "replace");
+              setSelected(new Set());
+              setSelectedDirs(new Set());
+              setActive(null);
+              setAnchor(null);
+              await refresh();
+              // eslint-disable-next-line no-alert
+              alert(`Imported ${imported} file(s), replaced ${deleted} old file(s)`);
+            } catch {
+              // eslint-disable-next-line no-alert
+              alert("File system import failed");
+            } finally {
+              input.value = "";
+              setBusyFsImport(false);
+            }
+          })();
+        }}
+      />
       <DirTree
         nodes={tree}
         open={open}
@@ -204,9 +243,41 @@ export default function FileSystemBrowser({
       />
       <div className="row" style={{ paddingTop: 4, gap: 8 }}>
         <button
-          disabled={busyDelete || busyExport || (selected.size === 0 && !active)}
+          disabled={busyAny}
           onClick={async () => {
-            if (busyDelete || busyExport) return;
+            if (busyAny) return;
+            setBusyFsExport(true);
+            try {
+              const blob = await createFileSystemSnapshotBlob();
+              const name = `galvoweb-fs-${formatTimestamp(new Date())}.gwfs.json`;
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = name;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 0);
+            } catch {
+              // eslint-disable-next-line no-alert
+              alert("File system export failed");
+            } finally {
+              setBusyFsExport(false);
+            }
+          }}
+        >
+          {busyFsExport ? "Exporting FS…" : "Export FS"}
+        </button>
+        <button
+          disabled={busyAny}
+          onClick={() => fsImportInputRef.current?.click()}
+        >
+          {busyFsImport ? "Importing FS…" : "Import FS"}
+        </button>
+        <button
+          disabled={busyAny || (selected.size === 0 && !active)}
+          onClick={async () => {
+            if (busyAny) return;
             setBusyDelete(true);
             try {
               const paths = selected.size > 0 ? Array.from(selected) : active ? [active] : [];
@@ -242,9 +313,9 @@ export default function FileSystemBrowser({
           {busyDelete ? "Deleting…" : `Delete${selected.size > 1 ? ` (${selected.size})` : ""}`}
         </button>
         <button
-          disabled={busyDelete || busyExport || (selected.size === 0 && !active)}
+          disabled={busyAny || (selected.size === 0 && !active)}
           onClick={async () => {
-            if (busyDelete || busyExport) return;
+            if (busyAny) return;
             setBusyExport(true);
             try {
               const paths = selected.size > 0 ? Array.from(selected) : active ? [active] : [];
@@ -410,5 +481,3 @@ function parentDir(p: string): string {
   const i = p.lastIndexOf("/");
   return i === -1 ? "" : p.substring(0, i);
 }
-
-// no import panel (viewer only)

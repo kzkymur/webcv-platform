@@ -19,4 +19,6 @@
     - `Export` downloads selected files (or active file):
       - `rgb-image` / `grayscale-image`: exported as PNG in original stored resolution.
       - JSON系 (`*.json`, `homography-json`, `undist-json`, `figure`, `sequence`): exported as raw JSON payload.
+    - `Export FS` writes the whole file system state (SQLite metadata + OPFS blobs) to one snapshot file: `*.gwfs.json`.
+    - `Import FS` restores from `*.gwfs.json` and replaces current file system contents.
   - File preview: when a file is selected in the sidebar file system, render a 2D Canvas preview under the index.
