@@ -1,6 +1,14 @@
 import { deleteMany, getFile, listFiles, putMany } from "@/shared/db";
 import type { FileEntry, FileType } from "@/shared/db/types";
 
+export type FsSnapshotProgress = {
+  phase: "export" | "import";
+  current: number;
+  total: number;
+  message: string;
+  path?: string;
+};
+
 type SnapshotEntry = {
   path: string;
   type: FileType;
@@ -84,9 +92,26 @@ function parseSnapshot(raw: unknown): SnapshotV1 {
   };
 }
 
-export async function createFileSystemSnapshotBlob(): Promise<Blob> {
+function shouldReport(index: number, total: number): boolean {
+  return index === 1 || index === total || index % 20 === 0;
+}
+
+async function yieldMainThreadEvery(index: number, step = 20): Promise<void> {
+  if (index % step !== 0) return;
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+export async function createFileSystemSnapshotBlob(
+  onProgress?: (p: FsSnapshotProgress) => void
+): Promise<Blob> {
   const metas = await listFiles();
   const entries: SnapshotEntry[] = [];
+  onProgress?.({
+    phase: "export",
+    current: 0,
+    total: metas.length,
+    message: `Preparing export for ${metas.length} file(s)`,
+  });
   for (const meta of metas) {
     const full = await getFile(meta.path);
     const data = full?.data ?? new ArrayBuffer(0);
@@ -98,6 +123,17 @@ export async function createFileSystemSnapshotBlob(): Promise<Blob> {
       channels: meta.channels,
       dataBase64: toBase64(data),
     });
+    const current = entries.length;
+    if (shouldReport(current, metas.length)) {
+      onProgress?.({
+        phase: "export",
+        current,
+        total: metas.length,
+        path: meta.path,
+        message: `Exported ${current}/${metas.length}: ${meta.path}`,
+      });
+    }
+    await yieldMainThreadEvery(current);
   }
   const snapshot: SnapshotV1 = {
     schema: "gwfs-snapshot",
@@ -110,7 +146,8 @@ export async function createFileSystemSnapshotBlob(): Promise<Blob> {
 
 export async function importFileSystemSnapshot(
   file: File,
-  mode: "replace" | "merge" = "replace"
+  mode: "replace" | "merge" = "replace",
+  onProgress?: (p: FsSnapshotProgress) => void
 ): Promise<{ imported: number; deleted: number }> {
   const text = await file.text();
   const raw = JSON.parse(text) as unknown;
@@ -124,16 +161,44 @@ export async function importFileSystemSnapshot(
     channels: e.channels,
     data: fromBase64(e.dataBase64),
   }));
+  const total = entries.length;
+  onProgress?.({
+    phase: "import",
+    current: 0,
+    total,
+    message: `Preparing import for ${total} file(s)`,
+  });
 
   let deleted = 0;
   if (mode === "replace") {
     const current = await listFiles();
     const paths = current.map((f) => f.path);
     if (paths.length > 0) {
+      onProgress?.({
+        phase: "import",
+        current: 0,
+        total,
+        message: `Deleting ${paths.length} existing file(s)`,
+      });
       deleted = await deleteMany(paths);
     }
   }
 
-  if (entries.length > 0) await putMany(entries);
+  const chunkSize = 64;
+  for (let i = 0; i < total; i += chunkSize) {
+    const chunk = entries.slice(i, i + chunkSize);
+    if (chunk.length > 0) await putMany(chunk);
+    const done = Math.min(total, i + chunk.length);
+    if (shouldReport(done, total)) {
+      onProgress?.({
+        phase: "import",
+        current: done,
+        total,
+        path: chunk[chunk.length - 1]?.path,
+        message: `Imported ${done}/${total}`,
+      });
+    }
+    await yieldMainThreadEvery(done);
+  }
   return { imported: entries.length, deleted };
 }

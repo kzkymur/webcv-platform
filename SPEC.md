@@ -85,6 +85,7 @@
 - デプロイは GitHub Actions ワークフロー `.github/workflows/deploy-pages.yml` で実行する。
   - トリガー: `main` への push、または手動実行（`workflow_dispatch`）。
   - 成果物: `pnpm run export` で生成される `dist/` を Pages artifact としてアップロードし、そのまま配信する。
+- 依存解決は `pnpm install --frozen-lockfile` を前提とし、`pnpm-lock.yaml` は pnpm 10 系で生成した互換バージョン（`lockfileVersion: '9.0'`）を維持する。
 - Next.js は `output: "export"` を維持し、GitHub Actions 実行時のみ `basePath` / `assetPrefix` を `/${repository-name}` に自動設定する。
 - ルーティング安定化のため `trailingSlash: true` を使用する。
 - `next/image` は静的配信制約のため `images.unoptimized: true` を使用する。

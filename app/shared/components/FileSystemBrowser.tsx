@@ -7,6 +7,7 @@ import { FileEntry } from "@/shared/db/types";
 import { exportFileEntry } from "@/shared/util/fileExport";
 import {
   createFileSystemSnapshotBlob,
+  type FsSnapshotProgress,
   importFileSystemSnapshot,
 } from "@/shared/util/fsSnapshot";
 import { formatTimestamp } from "@/shared/util/time";
@@ -18,6 +19,15 @@ export default function FileSystemBrowser({
 }: {
   onSelect: (f: FileEntry | null) => void;
 }) {
+  const logSnapshotProgress = (p: FsSnapshotProgress): void => {
+    const path = p.path ? ` ${p.path}` : "";
+    if (p.phase === "export") {
+      console.log(`[FS Export] ${p.current}/${p.total}${path} - ${p.message}`);
+      return;
+    }
+    console.log(`[FS Import] ${p.current}/${p.total}${path} - ${p.message}`);
+  };
+
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -141,7 +151,15 @@ export default function FileSystemBrowser({
           void (async () => {
             setBusyFsImport(true);
             try {
-              const { imported, deleted } = await importFileSystemSnapshot(picked, "replace");
+              console.log(`[FS Import] start: ${picked.name}`);
+              const { imported, deleted } = await importFileSystemSnapshot(
+                picked,
+                "replace",
+                logSnapshotProgress
+              );
+              console.log(
+                `[FS Import] done: imported=${imported}, deleted=${deleted}`
+              );
               setSelected(new Set());
               setSelectedDirs(new Set());
               setActive(null);
@@ -248,7 +266,8 @@ export default function FileSystemBrowser({
             if (busyAny) return;
             setBusyFsExport(true);
             try {
-              const blob = await createFileSystemSnapshotBlob();
+              console.log("[FS Export] start");
+              const blob = await createFileSystemSnapshotBlob(logSnapshotProgress);
               const name = `galvoweb-fs-${formatTimestamp(new Date())}.gwfs.json`;
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
@@ -258,6 +277,7 @@ export default function FileSystemBrowser({
               a.click();
               a.remove();
               setTimeout(() => URL.revokeObjectURL(url), 0);
+              console.log(`[FS Export] done: ${name}`);
             } catch {
               // eslint-disable-next-line no-alert
               alert("File system export failed");
