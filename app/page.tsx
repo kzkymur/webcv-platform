@@ -5,6 +5,7 @@ export const dynamic = "error";
 import Sidebar from "@/components/Sidebar";
 import { useMemo, useState } from "react";
 import { FileEntry } from "@/shared/db/types";
+import Link from "next/link";
 
 export default function Page() {
   const [activeFile, setActiveFile] = useState<FileEntry | null>(null);
@@ -17,9 +18,9 @@ export default function Page() {
             <h3>Feature Index</h3>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/1-syncro-checkerboard-shots">
+                <Link href="/1-syncro-checkerboard-shots">
                   <b>1. Syncro Checkerboard Shots</b>
-                </a>
+                </Link>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
                   Capture checkerboard or scene frames from selected cameras in
                   sync. Each trigger saves RGBA images into the built‑in
@@ -34,9 +35,9 @@ export default function Page() {
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/2-calibrate-scenes">
+                <Link href="/2-calibrate-scenes">
                   <b>2. Calibrate Scenes</b>
-                </a>
+                </Link>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
                   Detect chessboard corners and compute per‑camera intrinsics
                   and undistortion maps (single‑camera workflow). Outputs are
@@ -48,9 +49,9 @@ export default function Page() {
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/3-remap-realtime">
+                <Link href="/3-remap-realtime">
                   <b>3. Remap Realtime</b>
-                </a>
+                </Link>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
                   Preview and apply generated remap fields in real time (WebGL).
                   Select an undistortion map (and future inter‑camera options);
@@ -60,9 +61,9 @@ export default function Page() {
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/4-galvo-calibration">
+                <Link href="/4-galvo-calibration">
                   <b>4. Galvo Calibration</b>
-                </a>
+                </Link>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
                   Calibrate galvo XY to camera coordinates. Uses an
                   undistorted live camera feed, drives the microcontroller to
@@ -76,9 +77,9 @@ export default function Page() {
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/5-laser-manual-operation">
+                <Link href="/5-laser-manual-operation">
                   <b>5. Laser Manual Operation</b>
-                </a>
+                </Link>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
                   Manually drive the galvo and laser using a live, undistorted
                   camera preview. Select a per‑camera undistortion map and a
@@ -91,9 +92,9 @@ export default function Page() {
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/6-cameras-homography">
+                <Link href="/6-cameras-homography">
                   <b>6. Cameras Homography</b>
-                </a>
+                </Link>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
                   Choose Camera A/B and a common timestamp; previews show
                   undistorted frames (using page 2 maps). Computes a homography
@@ -105,9 +106,9 @@ export default function Page() {
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/7-galvo-figure-management">
+                <Link href="/7-galvo-figure-management">
                   <b>7. Galvo Figure Management</b>
-                </a>
+                </Link>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
                   Create and manage target polygons directly in the galvo plane.
                   Click on the preview to add vertices (auto‑closed polygon) and
@@ -120,9 +121,9 @@ export default function Page() {
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/8-laser-automatic-operation">
+                <Link href="/8-laser-automatic-operation">
                   <b>8. Laser Automatic Operation</b>
-                </a>
+                </Link>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
                   Build and run timelines that drive galvo scans. Add
                   <em>scan‑figure</em> fragments (outline) with optional laser %.
@@ -135,9 +136,9 @@ export default function Page() {
             </div>
             <div className="panel">
               <div className="col" style={{ gap: 6 }}>
-                <a href="/9-measure-thermo">
+                <Link href="/9-measure-thermo">
                   <b>9. Laser Thermo Measurement</b>
-                </a>
+                </Link>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
                   Run a saved sequence while recording thermal temperatures from
                   a WebSocket Y16 camera. The page shows web and thermal previews
