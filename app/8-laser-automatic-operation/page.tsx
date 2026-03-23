@@ -257,6 +257,9 @@ export default function Page() {
   const [addDur, setAddDur] = useState(5);
   const [addCycleSec, setAddCycleSec] = useState(1);
   const [addLaserPct, setAddLaserPct] = useState<number | "">("");
+  const [editingFragmentIndex, setEditingFragmentIndex] = useState<
+    number | null
+  >(null);
 
   // Add panel – set-laser fields
   // removed: set-laser fragment UI (integrated into scan)
@@ -264,6 +267,7 @@ export default function Page() {
   // Sequencer timeline canvas
   const tlCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const tlRaf = useRef<number>(0);
+  const fragmentIndexByIdRef = useRef<Map<string, number>>(new Map());
   const [nowSec, setNowSec] = useState(0);
   const playingSeqRef = useRef<IndependentSequencer | null>(null);
   const playingSerialRef = useRef<SerialCommunicator | null>(null);
@@ -325,6 +329,33 @@ export default function Page() {
           activeColor: "#5b9afe",
           inactiveColor: "#9994",
           timeIndicatorColor: "#ff4757",
+          onFragmentClick: (fragment) => {
+            if (isPlaying) return;
+            const index = fragmentIndexByIdRef.current.get(fragment.getId());
+            if (index === undefined) return;
+            const json = currentSequence();
+            const target = json.fragments[index];
+            if (!target || target.type !== "scan-figure") return;
+            const parsedT = Number(target.t);
+            const parsedDur = Number(target.duration);
+            const parsedCycle = Number(target.cycleSec ?? 1);
+            setEditingFragmentIndex(index);
+            setFigSel(target.figurePath);
+            setAddT(Number.isFinite(parsedT) ? Math.max(0, parsedT) : 0);
+            setAddDur(Number.isFinite(parsedDur) ? Math.max(0.1, parsedDur) : 0.1);
+            setAddCycleSec(
+              Number.isFinite(parsedCycle) ? Math.max(0.01, parsedCycle) : 1
+            );
+            const mode =
+              ScanStrategies.find((s) => s.key === target.mode) ||
+              OutlineStrategy;
+            setStrategy(mode);
+            setAddLaserPct(
+              typeof target.laserPct === "number"
+                ? Math.max(0, Math.min(100, Number(target.laserPct)))
+                : ""
+            );
+          },
         });
         const currentMs = seq.getCurrentTime?.() || 0;
         setNowSec(currentMs / 1000);
@@ -337,7 +368,7 @@ export default function Page() {
       mounted = false;
       cancelAnimationFrame(tlRaf.current);
     };
-  }, [seq]);
+  }, [seq, isPlaying]);
 
   // -- device enumeration --
   useEffect(() => {
@@ -514,8 +545,10 @@ export default function Page() {
     const pitch =
       seq?.getPitch?.() ?? Math.max(1, Math.floor(1000 / Math.max(1, rateHz)));
     const fresh = new IndependentSequencer(pitch, 1.0, false);
+    const nextFragmentIndexById = new Map<string, number>();
     const overlayFigures: OverlayFigure[] = [];
-    for (const fr of seqJson.fragments) {
+    for (let index = 0; index < seqJson.fragments.length; index++) {
+      const fr = seqJson.fragments[index];
       if (fr.type === "scan-figure") {
         const ctxFig = await getFile(fr.figurePath);
         const arr = parseFigurePointsFromFile(ctxFig);
@@ -559,8 +592,10 @@ export default function Page() {
           }
         );
         fresh.push(frag);
+        nextFragmentIndexById.set(frag.getId(), index);
       }
     }
+    fragmentIndexByIdRef.current = nextFragmentIndexById;
     ctrlRef.current?.setOverlayFigures(overlayFigures);
     return fresh;
   }
@@ -585,11 +620,11 @@ export default function Page() {
     setJsonText(JSON.stringify(json, null, 2));
   }
 
-  // Add fragments via UI
-  async function addScanFigure() {
+  // Add or update fragments via UI
+  async function upsertScanFigure() {
     if (!figSel) return;
     const json = currentSequence();
-    json.fragments.push({
+    const nextFragment: SequenceV1["fragments"][number] = {
       type: "scan-figure",
       t: Math.max(0, addT),
       duration: Math.max(0.1, addDur),
@@ -598,10 +633,20 @@ export default function Page() {
       cycleSec: Math.max(0.01, addCycleSec),
       rateHz: rateHz,
       laserPct: typeof addLaserPct === "number" ? addLaserPct : undefined,
-    });
+    };
+    if (
+      editingFragmentIndex !== null &&
+      editingFragmentIndex >= 0 &&
+      editingFragmentIndex < json.fragments.length
+    ) {
+      json.fragments[editingFragmentIndex] = nextFragment;
+    } else {
+      json.fragments.push(nextFragment);
+    }
     setSequence(json);
     const fresh = await applySequenceToSequencer(json);
     if (fresh) setSeq(fresh);
+    setEditingFragmentIndex(null);
   }
 
   // Save / Load
@@ -637,6 +682,7 @@ export default function Page() {
         new TextDecoder().decode(new Uint8Array(fe.data))
       );
       setSequence(json);
+      setEditingFragmentIndex(null);
       const fresh = await applySequenceToSequencer(json);
       if (fresh) {
         setSeq(fresh);
@@ -717,6 +763,7 @@ export default function Page() {
   useEffect(() => {
     setSequence({ schemaVersion: 1, fragments: [] });
     ctrlRef.current?.setOverlayFigures([]);
+    setEditingFragmentIndex(null);
   }, []);
 
   return (
@@ -815,7 +862,27 @@ export default function Page() {
         <div className="col" style={{ gap: 16 }}>
           {/* 1) Add Fragment */}
           <section className="col panel" style={{ gap: 8 }}>
-            <h4>Add Fragment – Figure Scan</h4>
+            <h4>
+              {editingFragmentIndex === null
+                ? "Add Fragment – Figure Scan"
+                : `Edit Fragment #${editingFragmentIndex + 1} – Figure Scan`}
+            </h4>
+            <div
+              className="row"
+              style={{ gap: 8, alignItems: "center", fontSize: 12, opacity: 0.8 }}
+            >
+              <span>
+                {editingFragmentIndex === null
+                  ? "Mode: adding a new fragment."
+                  : `Mode: editing fragment #${editingFragmentIndex + 1}.`}
+              </span>
+              <button
+                onClick={() => setEditingFragmentIndex(null)}
+                disabled={editingFragmentIndex === null}
+              >
+                Clear Selection
+              </button>
+            </div>
             <div className="row" style={{ gap: 12, alignItems: "center" }}>
               <label className="row" style={{ gap: 6 }}>
                 Figure
@@ -901,8 +968,8 @@ export default function Page() {
                   style={{ width: 90 }}
                 />
               </label>
-              <button onClick={addScanFigure} disabled={!figSel}>
-                Add
+              <button onClick={upsertScanFigure} disabled={!figSel}>
+                {editingFragmentIndex === null ? "Add" : "Update"}
               </button>
             </div>
           </section>

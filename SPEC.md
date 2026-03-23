@@ -48,8 +48,9 @@
   - その他のページ: プレビューは不要。選択イベントは各ページの機能（例: 入力の切替、参照パスの設定など）に用います。
 - ファイル名の編集は不可で OK ですが、削除機能は実装してください。
 - ファイルシステム操作ボタンは `Delete` / `Export` / `Export FS` / `Import FS` を提供します。
-  - `Export FS` はファイルシステム全体（SQLite メタ + OPFS Blob）を 1 つのスナップショット JSON（`*.gwfs.json`）として出力します。
-  - `Import FS` は `*.gwfs.json` を読み込み、現在のファイルシステム全体を置換（replace）します。
+  - `Export FS` はファイルシステム全体（SQLite メタ + OPFS Blob）を main thread で順次読込し、バイナリスナップショットとして出力します（通常 `*.gwfs.bin.gz`、大容量時は gzip を自動スキップして `*.gwfs.bin`）。
+  - `Import FS` は `*.gwfs.bin.gz` / `*.gwfs.bin` を読み込み、現在のファイルシステム全体を置換（replace）します。
+  - 互換読み込みとして旧 `*.gwfs.json` も Import 可能です。
   - `Export` は選択中のファイル（複数選択可）をダウンロードします。
   - `rgb-image` / `grayscale-image` は PNG に変換し、保存済みの解像度をそのまま保持して保存します。
   - JSON 系（`*.json` / `homography-json` / `undist-json` / `figure` / `sequence`）は JSON バイナリをそのまま保存します。
@@ -87,6 +88,7 @@
   - 成果物: `pnpm run export` で生成される `dist/` を Pages artifact としてアップロードし、そのまま配信する。
 - 依存解決は `pnpm install --frozen-lockfile` を前提とし、`pnpm-lock.yaml` は pnpm 10 系で生成した互換バージョン（`lockfileVersion: '9.0'`）を維持する。
 - Next.js は `output: "export"` を維持し、GitHub Actions 実行時のみ `basePath` / `assetPrefix` を `/${repository-name}` に自動設定する。
+- ルート遷移リンクは `next/link` を使用し、`<a href="/...">` の直書きによる basePath 非適用を避ける。
 - ルーティング安定化のため `trailingSlash: true` を使用する。
 - `next/image` は静的配信制約のため `images.unoptimized: true` を使用する。
 - ローカル開発時（Actions 以外）は `basePath` を空にし、これまで通り `http://localhost:8080` で確認できることを要件とする。
@@ -227,7 +229,7 @@
 - 入力: `ws://...` または `wss://...`。`Add` で `wsCameras: string[]` に保存し、全ページのカメラ選択セレクトに `(WS) <url>` として出現。
 - 複数追加可能。各エントリに `Remove` ボタン。
 
-## Page 8 – Laser Automatic Operation（2026-03-13 更新）
+## Page 8 – Laser Automatic Operation（2026-03-22 更新）
 
 - 目的: ページ7で作成した図形とレーザー出力をタイムラインで自動制御。
 - 保存形式: `FileEntry.type === "sequence"`、パスは `8-laser-automatic-operation/<ts>.seq`。
@@ -244,6 +246,7 @@
 - ループ再生: `Rate(Hz)` の右隣に `loop` チェックボックスを配置。`Start` 押下時に ON なら `setLoopFlag(true)` でループ再生し、停止は `Stop` ボタンで行う。
 - タイムライン表示の既定サイズは `720x50`（CSS px）。
 - `Add` ボタン押下時は JSON 追記だけでなく Sequencer インスタンスも即時再構築し、Timeline キャンバスに追加フラグメントを直ちに反映する。
+- フラグメント編集: `renderToCanvas(... onFragmentClick)` でクリックしたフラグメントを編集対象にし、追加時と同一フォームで `Update` 可能。フォーム上で `Add`/`Edit #n` を表示して対象を明示し、解除は `Clear Selection` を使う。
 - レーザー: `laserPct` 指定時は開始時に即変更。終了時の復帰なし。シーケンス全体終了/Stopで `A0`。
   - 2026-03-13: 高レートでの送信詰まり対策として、再生中の `B{x,y}` は最新値のみを coalesce 送信。終了時は保留 `B` を破棄して `A0` を優先送信。
   - 2026-03-13: loop 再生時は各フラグメントの周回開始で `laserPct` を再適用し、前周の最終レーザー値が次周へ固定されないようにする。
@@ -251,14 +254,15 @@
 - シーケンスに含まれる `scan-figure` ポリゴンをページ7同様に重畳表示し、再生中の該当フラグメントをハイライト表示する。
 - UI状態同期: 再生中は `Start` disabled / `Stop` enabled。自然終了または Stop で `Start` enabled / `Stop` disabled に戻す。
 
-## Page 9 – Laser Thermo Measurement（2026-03-12 追加）
+## Page 9 – Laser Thermo Measurement（2026-03-22 更新）
 
 - 目的: ページ8のシーケンス自動照射と同時に、サーモカメラ（WebSocket Y16）で温度時系列を取得する。
 - パス: `/9-measure-thermo`
-- レイアウト: ページ8をベースにしつつ、`Add Fragment` UI は廃止し、選択UIを追加する。
+- レイアウト: ページ8をベースに、選択UIに加えてページ8同等の `Add Fragment` UI（追加/編集兼用）を持つ。
   - 必須選択: Web Camera / Galvo Homography / Serial Device / Sequence File / Thermal Camera / Web↔Thermal Homography
   - Sequence File はページ8等で保存した `FileEntry.type === "sequence"` を利用。
   - Thermal Camera は既存の WebSocket Y16 ソース（`ws://` / `wss://`）を利用。
+  - タイムラインの `onFragmentClick` で編集対象フラグメントを選択し、同一フォームの `Update` で反映する。解除は `Clear Selection`。
 - プレビュー: Web カメラとサーモカメラを横並び表示し、照射点・フラグメント・温度観測点を両方へ同時に重畳表示する。
 - 温度観測点:
   - `Start` 前に、どちらかのプレビュークリックで設定。

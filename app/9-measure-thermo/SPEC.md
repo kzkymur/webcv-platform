@@ -2,11 +2,12 @@
   - TypeScript + Web Serial API + WebSocket Y16 + @kzkymur/sequencer
   - パス：`/9-measure-thermo`
   - ベース構成はページ8（`/8-laser-automatic-operation`）を踏襲する。
-  - ページ8と異なり `Add Fragment` UI は持たず、保存済みシーケンスを選択して実行する。
+  - 保存済みシーケンスの選択実行に加え、ページ8と同じ `Add Fragment` UI でフラグメント追加/編集を行える。
+  - タイムラインは `renderToCanvas(... onFragmentClick)` でクリック可能。クリックしたフラグメントを編集対象に設定し、同一フォームで `Update` する。
 
 ## 入力選択 UI
 
-- 下記6項目を必須選択にする（未選択時は `Start` disabled）。
+- 下記6項目を基本選択にする（`Start` 時はシーケンス・カメラ・Homography・Serial・観測点が必要）。
   - Web Camera
   - Galvo Homography（galvo→web camera）
   - Serial Device（Web Serial）
@@ -14,6 +15,10 @@
   - Thermal Camera（WebSocket Y16: `ws://` / `wss://`）
   - Web↔Thermal Homography（web camera と thermal camera の対応）
 - シーケンスタイムラインはページ8同様に表示する（既定 `720x50` CSS px）。
+- Fragment Editor（ページ8同等）:
+  - 項目: Figure / Start(s) / Duration(s) / Cycle(s) / mode / Laser(%)
+  - モード表示: `Add Fragment` と `Edit Fragment #n` を切り替え、ユーザが新規追加中か既存編集中かを常時判別可能にする。
+  - 編集対象の解除は `Clear Selection` ボタンで行う。
 
 ## プレビューと重畳表示
 

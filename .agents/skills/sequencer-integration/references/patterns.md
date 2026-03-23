@@ -43,10 +43,42 @@ Canvas HUD Timeline
 ```ts
 const ctx = canvas.getContext('2d')!;
 function renderLoop() {
-  seq.renderToCanvas(ctx, { width: canvas.width, height: canvas.height });
+  seq.renderToCanvas(ctx, {
+    width: canvas.width,
+    height: canvas.height,
+    onFragmentClick: (fragment, meta) => {
+      // e.g. show inspector panel for selected fragment
+      inspectFragment(fragment, meta.currentTime);
+    },
+  });
   requestAnimationFrame(renderLoop);
 }
 renderLoop();
+```
+
+Click-to-select in Queue mode
+
+```ts
+const fragments = seq.getFragments();
+
+const getRange = (target: Fragment) => {
+  let start = 0;
+  for (const fragment of fragments) {
+    const end = start + fragment.getDuration();
+    if (fragment.getId() === target.getId()) return { start, end };
+    start = end;
+  }
+  return { start: 0, end: target.getDuration() };
+};
+
+seq.renderToCanvas(ctx, {
+  width: 800,
+  height: 120,
+  onFragmentClick: (fragment) => {
+    const { start, end } = getRange(fragment as Fragment);
+    showStatus(`${fragment.getName()} ${start}-${end}ms`);
+  },
+});
 ```
 
 React Integration Sketch
@@ -79,4 +111,3 @@ if (seq.isPlaying()) {
   seq.stop();
 }
 ```
-

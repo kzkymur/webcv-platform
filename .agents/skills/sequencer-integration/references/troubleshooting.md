@@ -18,4 +18,7 @@ Fixes
 - For Independent mode, avoid `insert`; build order with `push` and start times.
 - Ensure `CustomFragment` children are added before playback; do not set its callback.
 - For rendering, ensure there is at least one fragment (non-zero total duration).
-
+- If `onFragmentClick` is not firing:
+  - Confirm you pass `onFragmentClick` on the same `renderToCanvas(...)` calls used in your render loop.
+  - Ensure canvas click coordinates match draw area (`canvas.width/height` vs CSS size).
+  - Verify clicks are inside fragment boxes (empty timeline area will not trigger callback).

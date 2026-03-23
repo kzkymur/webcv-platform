@@ -48,3 +48,17 @@ indep.push(new IndependentFragment('X', 100, 0));
 expect(() => indep.insert(0, new IndependentFragment('Y', 100, 10))).toThrow('Insert operation not supported');
 ```
 
+Canvas click interaction (mocked context)
+
+```ts
+const onFragmentClick = vi.fn();
+const seq = new Sequencer(100, 1.0, false);
+seq.push(new Fragment('A', 500));
+
+const ctx = createMockCanvas2DContext(800, 120); // app-side helper
+seq.renderToCanvas(ctx, { width: 800, height: 120, onFragmentClick });
+
+dispatchCanvasClick(ctx.canvas, { clientX: 100, clientY: 60 }); // app-side helper
+expect(onFragmentClick).toHaveBeenCalledTimes(1);
+expect(onFragmentClick.mock.calls[0][0].getName()).toBe('A');
+```

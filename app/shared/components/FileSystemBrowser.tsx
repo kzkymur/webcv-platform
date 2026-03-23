@@ -142,7 +142,7 @@ export default function FileSystemBrowser({
       <input
         ref={fsImportInputRef}
         type="file"
-        accept=".gwfs.json,application/json"
+        accept=".gwfs.bin,.gwfs.bin.gz,.gwfs.json,application/json,application/gzip,application/octet-stream"
         style={{ display: "none" }}
         onChange={(e) => {
           const input = e.currentTarget;
@@ -167,9 +167,11 @@ export default function FileSystemBrowser({
               await refresh();
               // eslint-disable-next-line no-alert
               alert(`Imported ${imported} file(s), replaced ${deleted} old file(s)`);
-            } catch {
+            } catch (error: unknown) {
+              console.error("[FS Import] failed", error);
+              const msg = error instanceof Error ? error.message : "unknown error";
               // eslint-disable-next-line no-alert
-              alert("File system import failed");
+              alert(`File system import failed: ${msg}`);
             } finally {
               input.value = "";
               setBusyFsImport(false);
@@ -267,8 +269,11 @@ export default function FileSystemBrowser({
             setBusyFsExport(true);
             try {
               console.log("[FS Export] start");
-              const blob = await createFileSystemSnapshotBlob(logSnapshotProgress);
-              const name = `galvoweb-fs-${formatTimestamp(new Date())}.gwfs.json`;
+              const { blob, compressed } = await createFileSystemSnapshotBlob(
+                logSnapshotProgress
+              );
+              const ext = compressed ? "gwfs.bin.gz" : "gwfs.bin";
+              const name = `galvoweb-fs-${formatTimestamp(new Date())}.${ext}`;
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
@@ -278,9 +283,11 @@ export default function FileSystemBrowser({
               a.remove();
               setTimeout(() => URL.revokeObjectURL(url), 0);
               console.log(`[FS Export] done: ${name}`);
-            } catch {
+            } catch (error: unknown) {
+              console.error("[FS Export] failed", error);
+              const msg = error instanceof Error ? error.message : "unknown error";
               // eslint-disable-next-line no-alert
-              alert("File system export failed");
+              alert(`File system export failed: ${msg}`);
             } finally {
               setBusyFsExport(false);
             }

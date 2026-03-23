@@ -3,11 +3,11 @@
   - パス：8-laser-automatic-operation
   - 5. の機能を自動化する。具体的には @kzkymur/sequencer を使用してガルバノスキャナ・レーザーの操作をシーケンス管理する。
   - シーケンスに追加するフラグメントは「照射対象ポリゴンをスキャン（レーザー出力を内包）」のみとする。
-  - UI は@kzkymur/sequencer のタイムライン描画を使用し、追加 UI では「図形・開始秒・継続秒・モード周期秒・走査モード・レーザー出力(%)」を設定して追加する。
+  - UI は@kzkymur/sequencer のタイムライン描画を使用し、追加 UI では「図形・開始秒・継続秒・モード周期秒・走査モード・レーザー出力(%)」を設定して追加/編集する。
   - シーケンスの情報もファイルシステムに同期的に保存されるようにする。テキストエリアと保存ボタンから成る UI で構成され、ファイル名を入力後、保存ボタンでファイルシステムに保存される。ファイル名は「8-laser-automatic-operation/日時.seq」
 - ファイルシステムにあるシーケンスをロードする機能も併せて追加する。
 
-## 実装メモ（2026-03-13 更新）
+## 実装メモ（2026-03-22 更新）
 
 - 保存先はページ番号に合わせて `8-laser-automatic-operation/<YYYY-MM-DD_HH-mm-ss>.seq`。
 - FileType に `sequence` を追加（`listFiles()` で列挙しやすくする）。
@@ -17,6 +17,7 @@
   - タイムライン描画: `renderToCanvas` に渡す `width/height` は固定値ではなく、Canvas の表示サイズ（`getBoundingClientRect()`）に同期する。Canvas バッファは `devicePixelRatio` を反映して再設定し、表示サイズと描画計算幅の不一致を防ぐ。
   - タイムライン表示の既定サイズは `720x50`（CSS px）。
   - `Add` 押下時は JSON 追記に加えて Sequencer を即時再構築し、タイムライン可視化へ追加フラグメントをその場で反映する。
+  - 2026-03-22 更新: `renderToCanvas(... onFragmentClick)` を利用し、タイムライン上でクリックしたフラグメントを編集対象として Add UI にロードできる。UI は追加時と同一で、`Add`/`Edit #n` モード表示と `Update` ボタンで判別する。解除は `Clear Selection` で行う。
 - フラグメント（JSON 仕様 v1）:
   - `scan-figure`: `{ type, t(sec), duration(sec), figurePath, mode?: 'outline' | 'raster-loop-edges' | 'outline-inward-8' | 'raster-loop-edges-inward-8' | 'outline-inward-4' | 'raster-loop-edges-inward-4' | 'raster' | 'grid-raster-inward', cycleSec?: number, rateHz?: number, laserPct?: number }`
     - 走査戦略は `ScanStrategy` インタフェースに準拠（`app/shared/scan/strategies.ts`）。

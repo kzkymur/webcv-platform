@@ -58,6 +58,10 @@ seq.renderToCanvas(ctx, {
   activeColor: '#ff4757',
   inactiveColor: '#2ed573',
   timeIndicatorColor: '#ffa502',
+  onFragmentClick: (fragment, meta) => {
+    console.log(
+      `clicked=${fragment.getName()} t=${Math.round(meta.currentTime)} x=${Math.round(meta.clickX)}`
+    );
+  },
 });
 ```
-

@@ -23,6 +23,7 @@ import { WebSocketY16Source } from "@/shared/stream/wsY16";
 
 type DeviceItem = { deviceId: string; label: string };
 type HItem = { ts: string; path: string };
+type FigItem = { ts: string; path: string };
 type SeqItem = { ts: string; path: string };
 type Point = { x: number; y: number };
 type OverlayFigure = { pointsGalvo: number[]; startMs: number; durationMs: number };
@@ -437,10 +438,12 @@ export default function Page() {
 
   const [hGalvoItems, setHGalvoItems] = useState<HItem[]>([]);
   const [hWtItems, setHWtItems] = useState<HItem[]>([]);
+  const [figItems, setFigItems] = useState<FigItem[]>([]);
   const [seqItems, setSeqItems] = useState<SeqItem[]>([]);
 
   const [hGalvoSel, setHGalvoSel] = useState("");
   const [hWtSel, setHWtSel] = useState("");
+  const [figSel, setFigSel] = useState("");
   const [seqSel, setSeqSel] = useState("");
 
   const [hGalvo, setHGalvo] = useState<Float32Array | null>(null);
@@ -461,6 +464,14 @@ export default function Page() {
   }, [hWebToThermal]);
 
   const [sequenceJson, setSequenceJson] = useState<SequenceV1 | null>(null);
+  const [strategy, setStrategy] = useState<ScanStrategy>(OutlineStrategy);
+  const [addT, setAddT] = useState(0);
+  const [addDur, setAddDur] = useState(5);
+  const [addCycleSec, setAddCycleSec] = useState(1);
+  const [addLaserPct, setAddLaserPct] = useState<number | "">("");
+  const [editingFragmentIndex, setEditingFragmentIndex] = useState<
+    number | null
+  >(null);
   const [sequenceDurationMs, setSequenceDurationMs] = useState(0);
   const sequenceDurationMsRef = useRef(0);
 
@@ -475,6 +486,7 @@ export default function Page() {
 
   const tlCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const graphCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fragmentIndexByIdRef = useRef<Map<string, number>>(new Map());
   const webCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const webOverlayRef = useRef<HTMLCanvasElement | null>(null);
   const thermalCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -529,6 +541,14 @@ export default function Page() {
       }))
       .sort((a, b) => (a.ts < b.ts ? 1 : -1));
 
+    const figs = files
+      .filter((f) => f.type === "figure")
+      .map((f) => ({
+        ts: f.path.match(/(\d{4}-\d{2}-\d{2}_[0-9-]{8,})/)?.[1] || f.path,
+        path: f.path,
+      }))
+      .sort((a, b) => (a.ts < b.ts ? 1 : -1));
+
     const seqs = files
       .filter((f) => f.type === "sequence")
       .map((f) => ({
@@ -539,10 +559,12 @@ export default function Page() {
 
     setHGalvoItems(galvo);
     setHWtItems(wt);
+    setFigItems(figs);
     setSeqItems(seqs);
 
     setHGalvoSel((prev) => (prev && galvo.some((x) => x.path === prev) ? prev : galvo[0]?.path || ""));
     setHWtSel((prev) => (prev && wt.some((x) => x.path === prev) ? prev : wt[0]?.path || ""));
+    setFigSel((prev) => (prev && figs.some((x) => x.path === prev) ? prev : figs[0]?.path || ""));
     setSeqSel((prev) => (prev && seqs.some((x) => x.path === prev) ? prev : seqs[0]?.path || ""));
   }
 
@@ -728,6 +750,7 @@ export default function Page() {
 
     const pitch = Math.max(1, Math.floor(1000 / Math.max(1, rateHz)));
     const fresh = new IndependentSequencer(pitch, 1.0, false);
+    const nextFragmentIndexById = new Map<string, number>();
 
     const fragments = await Promise.all(
       json.fragments.map(async (fr) => {
@@ -783,6 +806,7 @@ export default function Page() {
       });
 
       fresh.push(frag);
+      nextFragmentIndexById.set(frag.getId(), i);
     }
 
     sequenceDurationMsRef.current = endMs;
@@ -792,15 +816,69 @@ export default function Page() {
     thermalCtrlRef.current?.setOverlayFigures(overlayFigures);
     webCtrlRef.current?.setDotGalvo(null);
     thermalCtrlRef.current?.setDotGalvo(null);
+    fragmentIndexByIdRef.current = nextFragmentIndexById;
 
     return fresh;
+  }
+
+  function loadFragmentIntoEditor(
+    fragment: SequenceV1["fragments"][number],
+    index: number,
+  ) {
+    const parsedT = Number(fragment.t);
+    const parsedDur = Number(fragment.duration);
+    const parsedCycle = Number(fragment.cycleSec ?? 1);
+    setEditingFragmentIndex(index);
+    setFigSel(fragment.figurePath);
+    setAddT(Number.isFinite(parsedT) ? Math.max(0, parsedT) : 0);
+    setAddDur(Number.isFinite(parsedDur) ? Math.max(0.1, parsedDur) : 0.1);
+    setAddCycleSec(Number.isFinite(parsedCycle) ? Math.max(0.01, parsedCycle) : 1);
+    setAddLaserPct(
+      typeof fragment.laserPct === "number"
+        ? Math.max(0, Math.min(100, Number(fragment.laserPct)))
+        : "",
+    );
+    const mode = ScanStrategies.find((s) => s.key === fragment.mode) || OutlineStrategy;
+    setStrategy(mode);
+  }
+
+  async function upsertScanFigure() {
+    if (!figSel) return;
+    const base: SequenceV1 = sequenceJson ?? { schemaVersion: 1, fragments: [] };
+    const nextFragment: SequenceV1["fragments"][number] = {
+      type: "scan-figure",
+      t: Math.max(0, addT),
+      duration: Math.max(0.1, addDur),
+      figurePath: figSel,
+      mode: strategy.key,
+      cycleSec: Math.max(0.01, addCycleSec),
+      rateHz,
+      laserPct: typeof addLaserPct === "number" ? addLaserPct : undefined,
+    };
+    const nextFragments = [...base.fragments];
+    if (
+      editingFragmentIndex !== null &&
+      editingFragmentIndex >= 0 &&
+      editingFragmentIndex < nextFragments.length
+    ) {
+      nextFragments[editingFragmentIndex] = nextFragment;
+    } else {
+      nextFragments.push(nextFragment);
+    }
+    const nextJson: SequenceV1 = { ...base, fragments: nextFragments };
+    setSequenceJson(nextJson);
+    const fresh = await rebuildSequencerFromJson(nextJson);
+    setSeq(fresh);
+    setEditingFragmentIndex(null);
   }
 
   useEffect(() => {
     (async () => {
       if (!seqSel) {
         setSequenceJson(null);
+        setEditingFragmentIndex(null);
         setSeq(null);
+        fragmentIndexByIdRef.current = new Map();
         sequenceDurationMsRef.current = 0;
         setSequenceDurationMs(0);
         webCtrlRef.current?.setOverlayFigures([]);
@@ -810,22 +888,29 @@ export default function Page() {
       const fe = await getFile(seqSel);
       if (!fe?.data) {
         setSequenceJson(null);
+        setEditingFragmentIndex(null);
         setSeq(null);
+        fragmentIndexByIdRef.current = new Map();
         return;
       }
       try {
         const parsed = JSON.parse(new TextDecoder().decode(new Uint8Array(fe.data))) as SequenceV1;
         if (!parsed || parsed.schemaVersion !== 1 || !Array.isArray(parsed.fragments)) {
           setSequenceJson(null);
+          setEditingFragmentIndex(null);
           setSeq(null);
+          fragmentIndexByIdRef.current = new Map();
           return;
         }
         setSequenceJson(parsed);
+        setEditingFragmentIndex(null);
         const fresh = await rebuildSequencerFromJson(parsed);
         setSeq(fresh);
       } catch {
         setSequenceJson(null);
+        setEditingFragmentIndex(null);
         setSeq(null);
+        fragmentIndexByIdRef.current = new Map();
       }
     })();
   }, [seqSel]);
@@ -867,6 +952,14 @@ export default function Page() {
           activeColor: "#5b9afe",
           inactiveColor: "#9994",
           timeIndicatorColor: "#ff4757",
+          onFragmentClick: (fragment) => {
+            if (isPlaying || !sequenceJson) return;
+            const index = fragmentIndexByIdRef.current.get(fragment.getId());
+            if (index === undefined) return;
+            const target = sequenceJson.fragments[index];
+            if (!target || target.type !== "scan-figure") return;
+            loadFragmentIntoEditor(target, index);
+          },
         });
 
         const currentMs = seq.getCurrentTime?.() || 0;
@@ -883,7 +976,7 @@ export default function Page() {
       mounted = false;
       cancelAnimationFrame(raf);
     };
-  }, [seq]);
+  }, [seq, isPlaying, sequenceJson]);
 
   useEffect(() => {
     const can = graphCanvasRef.current;
@@ -1283,6 +1376,111 @@ export default function Page() {
               <span>Web-Thermal H: {hWebToThermal ? "loaded" : "-"}</span>
               <span>Sequence: {sequenceJson ? "loaded" : "-"}</span>
               <span>Observation Point: {obsWeb && obsThermal ? "set" : "not set"}</span>
+            </div>
+          </section>
+
+          <section className="col panel" style={{ gap: 8 }}>
+            <h4 style={{ margin: 0 }}>
+              {editingFragmentIndex === null
+                ? "Add Fragment – Figure Scan"
+                : `Edit Fragment #${editingFragmentIndex + 1} – Figure Scan`}
+            </h4>
+            <div className="row" style={{ gap: 8, alignItems: "center", fontSize: 12, opacity: 0.8 }}>
+              <span>
+                {editingFragmentIndex === null
+                  ? "Mode: adding a new fragment."
+                  : `Mode: editing fragment #${editingFragmentIndex + 1}.`}
+              </span>
+              <button
+                onClick={() => setEditingFragmentIndex(null)}
+                disabled={isPlaying || editingFragmentIndex === null}
+              >
+                Clear Selection
+              </button>
+              <span>Timeline fragments can be selected by click.</span>
+            </div>
+            <div className="row" style={{ gap: 12, alignItems: "center" }}>
+              <label className="row" style={{ gap: 6 }}>
+                Figure
+                <select value={figSel} onChange={(e) => setFigSel(e.target.value)} disabled={isPlaying}>
+                  <option value="">(unselected)</option>
+                  {figItems.map((f) => (
+                    <option key={f.path} value={f.path}>
+                      {f.path}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="row" style={{ gap: 6 }}>
+                Start (s)
+                <input
+                  type="number"
+                  value={addT}
+                  min={0}
+                  onChange={(e) => setAddT(Math.max(0, Number(e.target.value)))}
+                  style={{ width: 100 }}
+                  disabled={isPlaying}
+                />
+              </label>
+              <label className="row" style={{ gap: 6 }}>
+                Duration (s)
+                <input
+                  type="number"
+                  value={addDur}
+                  min={0.1}
+                  step={0.1}
+                  onChange={(e) => setAddDur(Math.max(0.1, Number(e.target.value)))}
+                  style={{ width: 110 }}
+                  disabled={isPlaying}
+                />
+              </label>
+              <label className="row" style={{ gap: 6 }}>
+                Cycle (s)
+                <input
+                  type="number"
+                  value={addCycleSec}
+                  min={0.01}
+                  step={0.01}
+                  onChange={(e) => setAddCycleSec(Math.max(0.01, Number(e.target.value)))}
+                  style={{ width: 100 }}
+                  disabled={isPlaying}
+                />
+              </label>
+              <label className="row" style={{ gap: 6 }}>
+                mode
+                <select
+                  value={strategy.key}
+                  onChange={(e) => {
+                    const s = ScanStrategies.find((x) => x.key === e.target.value) || OutlineStrategy;
+                    setStrategy(s);
+                  }}
+                  disabled={isPlaying}
+                >
+                  {ScanStrategies.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="row" style={{ gap: 6 }}>
+                Laser (%)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={addLaserPct === "" ? "" : addLaserPct}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setAddLaserPct(v === "" ? "" : Math.max(0, Math.min(100, Number(v))));
+                  }}
+                  style={{ width: 90 }}
+                  disabled={isPlaying}
+                />
+              </label>
+              <button onClick={() => void upsertScanFigure()} disabled={isPlaying || !figSel}>
+                {editingFragmentIndex === null ? "Add" : "Update"}
+              </button>
             </div>
           </section>
 

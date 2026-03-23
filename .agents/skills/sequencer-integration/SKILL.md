@@ -41,7 +41,7 @@ Quick Workflow
 - `await seq.replay(delayMs=0)`; requires not playing; resets time to 0.
 
 6) Visualize (optional)
-- `seq.renderToCanvas(ctx, { width?, height?, activeColor?, inactiveColor?, timeIndicatorColor? })`.
+- `seq.renderToCanvas(ctx, { width?, height?, activeColor?, inactiveColor?, timeIndicatorColor?, onFragmentClick? })`.
 
 Safety & Error Guards (agent-minded)
 
@@ -73,9 +73,9 @@ Notes For Coding Agents
 - Prefer creating fragments once and reusing via `.copy()` when repeating patterns.
 - Await `waitCompleted()` when callers expect completion before proceeding.
 - For canvas, ensure `totalDuration > 0` before rendering to avoid divide-by-zero visuals.
+- `onFragmentClick` is hit-tested against the most recent render result; keep a render loop running if layout changes over time.
 - For high precision timelines, set `useUniversalWorker=true` (Queue mode) and avoid heavy work in callbacks.
 
 References
 
 - See the skill-creator guidance in `.agents/skills/skill-creator/` for structure and progressive disclosure patterns.
-

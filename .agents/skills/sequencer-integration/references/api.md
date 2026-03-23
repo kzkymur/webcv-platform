@@ -3,7 +3,7 @@ API Reference (precise, agent-friendly)
 Exports
 
 - Classes: `Sequencer`, `IndependentSequencer`, `Fragment`, `IndependentFragment`, `CustomFragment`.
-- Type: `RenderOptions` for canvas visualization.
+- Types for canvas visualization: `RenderOptions`, `FragmentClickMeta`.
 
 Fragment
 
@@ -67,8 +67,29 @@ type RenderOptions = {
   activeColor?: string;
   inactiveColor?: string;
   timeIndicatorColor?: string;
+  onFragmentClick?: (
+    fragment: Fragment | IndependentFragment,
+    meta: FragmentClickMeta
+  ) => void;
+};
+
+type FragmentClickMeta = {
+  currentTime: number;
+  clickX: number;
+  clickY: number;
+  fragmentX: number;
+  fragmentY: number;
+  fragmentWidth: number;
+  fragmentHeight: number;
+  event: MouseEvent;
 };
 ```
+
+Canvas click behavior
+
+- `onFragmentClick` is called only when the click is inside a fragment box from the latest `renderToCanvas(...)`.
+- Hit test is front-most priority when fragments overlap (later drawn region wins).
+- Click handling is attached per canvas and reused across subsequent renders.
 
 Exceptions (messages)
 
@@ -80,4 +101,3 @@ Exceptions (messages)
 - Independent only: `Insert operation not supported for IndependentSequencer`.
 - CustomFragment: `Name cannot be empty`, `Start point cannot be negative`, `CustomFragment callback cannot be set directly`, `currentTime have to be number`.
 - Timer total time: `Total time must be larger than 0` (when setting a negative/NaN total).
-
